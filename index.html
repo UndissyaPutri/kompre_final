@@ -701,7 +701,7 @@ table.data-table td.empty{text-align:center}
           <div class="table-wrap">
             <table class="data-table" id="priorityTable">
               <thead><tr>
-                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th>Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
+                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th class="num">DPK to Loan</th><th>Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
               </tr></thead>
               <tbody id="priorityBody"></tbody>
             </table>
@@ -2537,11 +2537,12 @@ $('oppPinjamanSortFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.i
 $('oppKolFilter').addEventListener('change', () => { if(State.activeOpp==='kolWatch') selectOpp('kolWatch', true); });
 /* ===================================================================
    PRIORITAS PENGELOLAAN — CASA to Loan tetap jadi parameter utama (gerbang
-   utama Perlu Kunjungan vs CASA Memadai, seperti sebelumnya). Sub-urutan
-   P1/P2/P3 dari kombinasi Aktivitas Transaksi, NPD Bulan Berjalan & DSRA
-   Memadai HANYA dipakai untuk fasilitas yang CASA to Loan-nya < 5% (Perlu
-   Kunjungan) — fasilitas yang CASA-nya sudah memadai (≥5%) tidak diurutkan
-   pakai matriks ini, cukup masuk kelompok CASA Memadai.
+   utama Perlu Kunjungan vs CASA Memadai, seperti sebelumnya). Sub-prioritas
+   P1-P4 dari kombinasi Aktivitas Transaksi, NPD Bulan Berjalan & DSRA
+   Memadai dihitung utk KEDUA kelompok — Perlu Kunjungan dapat P1-P3, CASA
+   Memadai dapat P2-P4 — persis matriks 16 kombinasi lengkap yang sudah
+   disepakati sebelumnya, cuma dipecah jadi 2 lookup 8-kombinasi (dibagi
+   oleh gerbang CASA to Loan) supaya CASA to Loan tetap parameter utama.
    ================================================================= */
 const QUAD_DEFS = {
   needsVisit: {label:'Perlu Kunjungan', color:'#d64545', badgeCls:'k-5', sub:''},
@@ -2551,17 +2552,22 @@ const PRIORITY_DEFS = {
   p1: {label:'P1', desc:'Prioritas tertinggi', color:'#d64545', badgeCls:'k-5'},
   p2: {label:'P2', desc:'Prioritas tinggi',    color:'#c2571c', badgeCls:'k-4'},
   p3: {label:'P3', desc:'Prioritas sedang',    color:'#b45f11', badgeCls:'k-3'},
+  p4: {label:'P4', desc:'Prioritas rendah',    color:'#0a9d6e', badgeCls:'k-1'},
 };
-// Kunci = `${aktivitasAktif}${npdBulanIni}${dsraMemadai}` (1=Ya, 0=Tidak) ->
-// P1..P3. Ini persis subset "CASA to Loan = Tidak memadai" dari matriks 16
-// kombinasi yang sudah disepakati sebelumnya (baris CASA=Ya dibuang karena
-// tidak lagi dipakai — fasilitas dgn CASA memadai tidak masuk sub-urutan
-// ini). Kombinasi 000 (semua kondisi lain juga buruk) diputuskan masuk P2,
-// bukan P1, karena tidak ada tagihan jatuh tempo bulan ini.
+// Kunci = `${aktivitasAktif}${npdBulanIni}${dsraMemadai}` (1=Ya, 0=Tidak).
+// Dipakai utk fasilitas CASA to Loan < 5% (Perlu Kunjungan) -> P1-P3.
+// Kombinasi 000 (semua kondisi lain juga buruk) diputuskan masuk P2, bukan
+// P1, karena tidak ada tagihan jatuh tempo bulan ini.
 const PRIORITY_MATRIX_LOW_CASA = {
   '010':'p1', '011':'p1', '110':'p1',
   '111':'p2', '000':'p2', '001':'p2', '100':'p2',
   '101':'p3',
+};
+// Sama, dipakai utk fasilitas CASA to Loan >= 5% (CASA Memadai) -> P2-P4.
+const PRIORITY_MATRIX_HIGH_CASA = {
+  '010':'p2',
+  '011':'p3', '000':'p3', '110':'p3',
+  '001':'p4', '111':'p4', '100':'p4', '101':'p4',
 };
 function percentile(sortedArr, p){
   if(!sortedArr.length) return 0;
@@ -2627,6 +2633,9 @@ function computePriorityData(){
     const cov = c.casaToLoan ?? 0;
     const quad = cov < COV_FIXED_THRESHOLD ? 'needsVisit' : 'sehat';
     c.priorityQuad = quad;
+    // Rasio DPK to Loan: (Tabungan+Giro+Deposito) / Baki Debet Pinjaman —
+    // sama basis OS dgn CASA to Loan, cuma pembilangnya ikut Deposito.
+    const dpkToLoan = c.totalBakiDebet > 0 ? (c.totalFunding / c.totalBakiDebet) : null;
     // Aktivitas Transaksi: pakai frekuensi mutasi kredit bulan TERAKHIR di
     // rekening koran (snapshot bulan berjalan), bukan rata-rata 12 bulan.
     const rk = c.rekeningKoran || [];
@@ -2649,20 +2658,19 @@ function computePriorityData(){
         // yang perlu ditutup).
         dsraMemadai = (loan._tunggakan||0) <= 0;
       }
-      // Sub-urutan P1/P2/P3 HANYA dihitung utk quad 'needsVisit' (CASA to
-      // Loan < 5%) — CASA to Loan tetap parameter utama/gerbang. Fasilitas
-      // yg CASA-nya sudah memadai tidak diberi P (priority: null).
-      let priority = null;
-      if(quad === 'needsVisit'){
-        const key = (aktivitasAktif?'1':'0') + (npdBulanIni?'1':'0') + (dsraMemadai?'1':'0');
-        priority = PRIORITY_MATRIX_LOW_CASA[key] || 'p3';
-      }
-      list.push({c, loan, cov, quad, aktivitasAktif, npdBulanIni, dsraMemadai, priority});
+      // CASA to Loan tetap parameter utama/gerbang (quad); sub-prioritas
+      // P1-P4 dihitung utk kedua kelompok, cuma beda lookup 8-kombinasi:
+      // Perlu Kunjungan -> P1-P3, CASA Memadai -> P2-P4.
+      const key = (aktivitasAktif?'1':'0') + (npdBulanIni?'1':'0') + (dsraMemadai?'1':'0');
+      const priority = quad === 'needsVisit'
+        ? (PRIORITY_MATRIX_LOW_CASA[key] || 'p3')
+        : (PRIORITY_MATRIX_HIGH_CASA[key] || 'p4');
+      list.push({c, loan, cov, dpkToLoan, quad, aktivitasAktif, npdBulanIni, dsraMemadai, priority});
     });
   });
   list.sort((a,b) => {
     if(a.quad !== b.quad) return a.quad === 'needsVisit' ? -1 : 1;
-    if(a.quad === 'needsVisit' && a.priority !== b.priority) return a.priority.localeCompare(b.priority); // p1 < p2 < p3
+    if(a.priority !== b.priority) return a.priority.localeCompare(b.priority); // p1 < p2 < p3 < p4
     if(a.loan._baki !== b.loan._baki) return a.loan._baki - b.loan._baki; // saldo (OS) terkecil dulu
     const da = parseLooseDate(a.loan.nextPmtDate), db = parseLooseDate(b.loan.nextPmtDate);
     if(da == null && db == null) return 0;
@@ -2671,8 +2679,11 @@ function computePriorityData(){
     return da - db; // next payment date paling cepat dulu
   });
   const quadCounts = {needsVisit:0, sehat:0};
-  const priorityCounts = {p1:0, p2:0, p3:0};
-  list.forEach(r => { quadCounts[r.quad]++; if(r.priority) priorityCounts[r.priority]++; });
+  // priorityCounts di-nest per quad — P2 dari "Perlu Kunjungan" (matrix LOW_CASA)
+  // dan P2 dari "CASA Memadai" (matrix HIGH_CASA) adalah kombinasi kondisi yang
+  // berbeda, jadi tidak boleh dijumlah jadi satu angka P2 gabungan.
+  const priorityCounts = {needsVisit:{p1:0,p2:0,p3:0,p4:0}, sehat:{p1:0,p2:0,p3:0,p4:0}};
+  list.forEach(r => { quadCounts[r.quad]++; priorityCounts[r.quad][r.priority]++; });
   State.priority = {list, p25Cov:COV_FIXED_THRESHOLD, quadCounts, priorityCounts, asOfYear, asOfMonth};
 }
 function renderPriorityQuadGrid(){
@@ -2681,9 +2692,10 @@ function renderPriorityQuadGrid(){
     const def = QUAD_DEFS[q];
     const count = quadCounts[q] || 0;
     const isEmpty = count === 0;
+    const pc = priorityCounts[q] || {};
     const subBreakdown = q === 'needsVisit'
-      ? `P1: ${priorityCounts.p1||0} · P2: ${priorityCounts.p2||0} · P3: ${priorityCounts.p3||0}`
-      : def.sub;
+      ? `P1: ${pc.p1||0} · P2: ${pc.p2||0} · P3: ${pc.p3||0}`
+      : `P2: ${pc.p2||0} · P3: ${pc.p3||0} · P4: ${pc.p4||0}`;
     return `
       <div class="opp-card ${isEmpty?'disabled':''}" data-quad="${q}" onclick="${isEmpty?'':`selectPriorityQuad('${q}')`}" style="border-left:4px solid ${def.color}">
         <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
@@ -2713,11 +2725,12 @@ function renderPriorityTable(){
       <td>${escapeHtml(r.loan.noRekening)}</td>
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
       <td class="num">${fmtDec(r.cov*100)}%</td>
-      <td>${r.priority ? `<span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}">${PRIORITY_DEFS[r.priority].label}</span>` : `<span class="badge-pill ${QUAD_DEFS[r.quad].badgeCls}">${QUAD_DEFS[r.quad].label}</span>`}</td>
+      <td class="num">${r.dpkToLoan!=null ? fmtDec(r.dpkToLoan*100)+'%' : '-'}</td>
+      <td><span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}">${PRIORITY_DEFS[r.priority].label}</span></td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
       <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
     </tr>
-  `).join('') || '<tr><td colspan="7" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
+  `).join('') || '<tr><td colspan="8" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
 }
 function renderPriorityTab(){
   computePriorityData();
@@ -2851,14 +2864,15 @@ function exportToExcel(){
     computePriorityData();
     const priorityRows = (State.priority?.list || []).map(r => [
       r.c.nama, r.c.cif, r.loan.noRekening, r.c.uker, r.loan._baki, +(r.cov*100).toFixed(2),
+      r.dpkToLoan!=null ? +(r.dpkToLoan*100).toFixed(2) : '',
       QUAD_DEFS[r.quad].label,
-      r.quad==='needsVisit' ? (r.aktivitasAktif?'Ya':'Tidak') : '-',
-      r.quad==='needsVisit' ? (r.npdBulanIni?'Ya':'Tidak') : '-',
-      r.quad==='needsVisit' ? (r.dsraMemadai?'Ya':'Tidak') : '-',
-      r.priority ? PRIORITY_DEFS[r.priority].label : '-',
+      r.aktivitasAktif ? 'Ya' : 'Tidak',
+      r.npdBulanIni ? 'Ya' : 'Tidak',
+      r.dsraMemadai ? 'Ya' : 'Tidak',
+      PRIORITY_DEFS[r.priority].label,
       cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')
     ]);
-    const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)',
+    const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)','DPK to Loan (%)',
       'Status','Aktivitas Transaksi','NPD Bulan Berjalan','DSRA Memadai','Sub-Prioritas',
       'RM Pengelola Pinjaman','RM Pengelola Simpanan'];
     const wsPriority = XLSX.utils.aoa_to_sheet([priorityHeader, ...priorityRows]);
