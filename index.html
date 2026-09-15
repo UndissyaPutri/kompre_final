@@ -1,0 +1,2879 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Keterkaitan Pinjaman - Simpanan</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --brand:#0856c3;
+  --brand-dark:#063f8f;
+  --brand-darker:#042a63;
+  --brand-mid:#2f7ee2;
+  --accent:#d4f0f7;
+  --accent-mid:#70c4e7;
+  --accent-soft:#eef9fc;
+  --bg:#eef5fb;
+  --surface:#ffffff;
+  --surface-alt:#f4f9fd;
+  --border:#d3e6f4;
+  --text:#0b2540;
+  --text-muted:#5a7691;
+  --text-soft:#8ba6bd;
+  --success:#0a9d6e;
+  --warning:#d69a12;
+  --danger:#d64545;
+  --k1:#0a9d6e; --k2:#d69a12; --k3:#e07b1f; --k4:#d6592f; --k5:#d64545;
+  --shadow-sm:0 1px 2px rgba(8,86,195,.06);
+  --shadow-md:0 2px 6px rgba(8,86,195,.08);
+  --shadow-lg:0 4px 14px rgba(8,86,195,.12);
+  --radius-sm:3px; --radius:4px; --radius-lg:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,'Roboto','Helvetica Neue',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.5;
+  font-size:14px;
+  -webkit-font-smoothing:antialiased;
+}
+/* ===================== HEADER ===================== */
+.app-header{
+  background:var(--brand-dark);
+  color:#fff;
+  padding:14px 28px;
+  box-shadow:var(--shadow-sm);
+  position:sticky;top:0;z-index:50;
+  border-bottom:3px solid var(--brand-mid);
+}
+.header-inner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-text h1{font-size:19px;font-weight:700;letter-spacing:-.2px}
+.brand-text p{font-size:12px;opacity:.85;margin-top:2px}
+.header-actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 16px;border:none;border-radius:8px;cursor:pointer;
+  font-size:13px;font-weight:600;transition:all .15s;
+  font-family:inherit;
+}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:var(--brand-darker)}
+.btn-primary:hover:not(:disabled){background:#fff}
+.btn-light{background:rgba(255,255,255,.15);color:#fff}
+.btn-light:hover:not(:disabled){background:rgba(255,255,255,.25)}
+.btn-outline{background:transparent;color:var(--text);border:1.5px solid var(--border)}
+.btn-outline:hover:not(:disabled){background:var(--surface-alt);border-color:var(--brand)}
+.btn-sm{padding:6px 12px;font-size:12px}
+/* Solid dark blue — used where the action should visually invite a click
+   (e.g. "Lihat Rekening Koran" on an opp-entry card), instead of the
+   low-emphasis outline style used for routine/secondary actions. */
+.btn-brand{background:var(--brand-dark);color:#fff}
+.btn-brand:hover:not(:disabled){background:var(--brand-darker)}
+/* ===================== LAYOUT ===================== */
+.container{max-width:1500px;margin:0 auto;padding:24px 28px}
+/* ===================== UPLOAD ===================== */
+/* Section spans the full page width, but the slot grid inside is capped and
+   centered so the upload cards stay a sensible width on very wide screens. */
+.upload-wrap{width:100%}
+.upload-intro{
+  background:var(--surface);border-radius:var(--radius-lg);padding:22px 26px;
+  margin-bottom:18px;box-shadow:var(--shadow-sm);border:1px solid var(--border);
+  max-width:1100px;margin-left:auto;margin-right:auto;
+}
+.upload-intro h2{font-size:19px;color:var(--brand-darker);margin-bottom:6px}
+.upload-intro p{color:var(--text-muted);font-size:13px;line-height:1.6}
+.upload-intro code{background:var(--accent-soft);padding:1px 6px;border-radius:4px;color:var(--brand-dark);font-weight:600}
+.slot-grid{
+  display:grid;grid-template-columns:repeat(4, minmax(220px, 260px));
+  gap:14px;margin:0 auto 18px;justify-content:center;
+}
+.slot-card{
+  background:var(--surface);border:2px dashed var(--border);border-radius:var(--radius);
+  padding:18px;transition:all .2s;position:relative;
+}
+.slot-card.required{border-color:var(--brand-mid)}
+.slot-card.filled{border-style:solid;border-color:var(--success);background:var(--accent-soft)}
+.slot-card.dragging{border-color:var(--brand);background:var(--accent-soft)}
+.slot-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
+.slot-title{font-size:13.5px;font-weight:700;color:var(--text)}
+.slot-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px;border-radius:10px}
+.slot-badge.req{background:#fde9e5;color:var(--danger)}
+.slot-badge.opt{background:var(--accent-soft);color:var(--brand-dark)}
+.slot-desc{font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5}
+.slot-status{font-size:12px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--text-muted);display:block;word-wrap:break-word;overflow-wrap:break-word;line-height:1.5}
+.slot-status.ok{background:#e5f6ef;color:var(--success);font-weight:600}
+.slot-status.err{background:#fdeceb;color:var(--danger);font-weight:600}
+.slot-input{display:none}
+.slot-pick{
+  margin-top:8px;width:100%;padding:8px;border-radius:7px;border:1px solid var(--border);
+  background:var(--surface-alt);color:var(--brand-dark);font-weight:600;font-size:12px;cursor:pointer;text-align:center;
+}
+.slot-pick:hover{background:var(--accent-soft);border-color:var(--brand)}
+.upload-actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:22px;text-align:center}
+.upload-hint{font-size:11.5px;color:var(--text-soft)}
+/* The main call-to-action: dull gray + not-allowed while LW321 is missing,
+   turns solid blue with a visible shadow the moment it becomes clickable
+   so it clearly invites the click. */
+#btnProcess{
+  padding:14px 36px;font-size:15px;font-weight:700;border-radius:10px;
+  transition:background .15s, box-shadow .15s, transform .1s;
+}
+#btnProcess:disabled{
+  background:#d7dee6;color:#8592a1;opacity:1;cursor:not-allowed;box-shadow:none;
+}
+#btnProcess:not(:disabled){
+  background:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(8,86,195,.4);
+}
+#btnProcess:not(:disabled):hover{background:var(--brand-dark);transform:translateY(-1px)}
+.progress-card{
+  background:var(--surface);border-radius:var(--radius);padding:20px;
+  box-shadow:var(--shadow-md);margin-bottom:18px;display:none;
+  max-width:1100px;margin-left:auto;margin-right:auto;
+}
+.progress-card.show{display:block;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.progress-info{display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px}
+.progress-track{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;background:var(--brand);border-radius:4px;transition:width .2s;width:0%}
+/* ===================== DASHBOARD ===================== */
+.dashboard{display:none}
+.dashboard.show{display:block}
+.global-filter-bar{
+  display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;
+  background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--brand-dark);
+  border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:18px;
+}
+.gf-pill{display:flex;flex-direction:column;min-width:190px}
+.gf-pill label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:700;margin-bottom:3px}
+.gf-pill select, .gf-pill input.gf-combo-input{
+  padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  font-size:13px;font-weight:600;color:var(--brand-darker);background:var(--surface-alt);
+}
+.gf-pill select:focus, .gf-pill input.gf-combo-input:focus{outline:none;border-color:var(--brand)}
+.gf-pill input.gf-combo-input{width:100%;box-sizing:border-box;font-family:inherit}
+.gf-pill input.gf-combo-input::placeholder{color:var(--text-muted);font-weight:600;opacity:1}
+.gf-hint{font-size:11.5px;color:var(--text-soft);align-self:center}
+.stats-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:14px;margin-bottom:20px;
+}
+.stat-card{
+  background:var(--surface);border-radius:var(--radius-sm);
+  padding:16px 18px;box-shadow:none;border:1px solid var(--border);
+  border-left:4px solid var(--brand);
+}
+.stat-card.success{border-left-color:var(--success)}
+.stat-card.warning{border-left-color:var(--warning)}
+.stat-card.danger{border-left-color:var(--danger)}
+.stat-card.accent{border-left-color:var(--accent-mid);background:var(--accent-soft)}
+.stat-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.stat-value{font-size:21px;font-weight:700;margin-top:6px;letter-spacing:-.5px;color:var(--text)}
+.stat-sub{font-size:11.5px;color:var(--text-soft);margin-top:4px}
+/* ===================== TABS ===================== */
+.tabs{
+  display:flex;gap:2px;background:var(--surface);
+  padding:4px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);margin-bottom:18px;
+  overflow-x:auto;
+}
+.tab{
+  flex:1;min-width:max-content;
+  padding:10px 18px;border:none;background:transparent;
+  border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;
+  color:var(--text-muted);transition:background .1s;font-family:inherit;
+  display:flex;align-items:center;gap:7px;justify-content:center;
+}
+.tab:hover{color:var(--text);background:var(--surface-alt)}
+.tab.active{
+  background:var(--brand-dark);
+  color:#fff;
+}
+.tab .badge{
+  background:rgba(255,255,255,.25);color:inherit;
+  padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;
+}
+.tab:not(.active) .badge{background:var(--accent-soft);color:var(--brand-dark)}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:fadeIn .25s}
+/* ===================== PANELS ===================== */
+.panel{
+  background:var(--surface);border-radius:var(--radius-sm);
+  box-shadow:none;margin-bottom:18px;overflow:hidden;
+  border:1px solid var(--border);
+}
+.panel-header{
+  padding:12px 20px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  background:var(--brand-dark);
+}
+.panel-header .panel-title{color:#fff}
+.panel-header .panel-actions span{color:rgba(255,255,255,.8) !important}
+.panel-title{font-size:15px;font-weight:700;color:var(--brand-darker);display:flex;align-items:center;gap:8px}
+.panel-body{padding:18px 20px}
+.panel-actions{display:flex;gap:6px;align-items:center}
+/* ===================== FILTERS ===================== */
+.filter-bar{
+  display:grid;
+  grid-template-columns:2fr repeat(2,1fr) auto;
+  gap:10px;margin-bottom:14px;align-items:center;
+}
+.input,.select{
+  width:100%;padding:9px 12px;border:1px solid var(--border);
+  border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);
+  transition:border-color .15s,box-shadow .15s;color:var(--text);
+}
+.input:focus,.select:focus{
+  outline:none;border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(8,86,195,.1);
+}
+.search-wrap{position:relative}
+.search-wrap input{padding-left:34px}
+.search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-soft)}
+/* ===================== TABLE ===================== */
+.table-wrap{overflow-x:auto;border-radius:var(--radius)}
+table.data-table{
+  width:100%;border-collapse:separate;border-spacing:0;
+  font-size:12.5px;background:var(--surface);
+}
+table.data-table th{
+  position:sticky;top:0;z-index:5;
+  background:var(--brand-dark);
+  text-align:left;padding:9px 14px;
+  font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+  color:#fff;font-weight:700;
+  border-bottom:1px solid var(--brand-darker);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+table.data-table th:hover{background:var(--brand)}
+table.data-table th.sortable::after{content:'⇅';margin-left:6px;opacity:.6;font-size:10px}
+table.data-table th.sort-asc::after{content:'▲';opacity:1;color:var(--accent)}
+table.data-table th.sort-desc::after{content:'▼';opacity:1;color:var(--accent)}
+table.data-table td{
+  padding:10px 14px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);
+  vertical-align:top;white-space:normal;word-break:break-word;text-align:left;
+}
+table.data-table th{border-right:1px solid rgba(255,255,255,.25)}
+table.data-table th:last-child,table.data-table td:last-child{border-right:none}
+table.data-table tbody tr:nth-child(even) td{background:var(--surface-alt)}
+table.data-table tr:hover td{background:var(--accent-soft)}
+table.data-table tr.expanded td{background:var(--accent-soft)}
+table.data-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:18px}
+table.data-table .ctr{text-align:center}
+.row-toggle{
+  background:none;border:none;cursor:pointer;color:var(--brand);
+  font-size:14px;padding:0;width:22px;height:22px;
+  border-radius:4px;display:inline-flex;align-items:center;justify-content:center;
+}
+.row-toggle:hover{background:var(--accent)}
+.row-toggle.open{transform:rotate(90deg)}
+.badge-pill{
+  display:inline-block;padding:3px 9px;border-radius:12px;
+  font-size:11px;font-weight:700;letter-spacing:.2px;white-space:nowrap;
+}
+.k-1{background:#e4f6ee;color:#0a7d58}
+.k-2{background:#fdf3dd;color:#a17408}
+.k-3{background:#fdeadb;color:#b45f11}
+.k-4{background:#fbe3d9;color:#b4441c}
+.k-5{background:#fbe0e0;color:#b32e2e}
+.prod-yes{background:var(--accent);color:var(--brand-darker)}
+.prod-no{background:#eef1f4;color:var(--text-soft)}
+.opp-badge{background:var(--brand);color:#fff}
+.opp-pill-wrap{display:grid;grid-template-columns:repeat(2,auto);gap:4px;justify-content:start}
+.opp-badge.zero{background:#eef1f4;color:var(--text-soft)}
+.detail-row{background:var(--surface-alt) !important}
+.detail-row td{padding:0 !important;border-bottom:2px solid var(--brand) !important}
+.detail-content{padding:20px 24px}
+.detail-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:8px 24px;
+}
+.detail-grid-single{grid-template-columns:1fr}
+.detail-field{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--border)}
+.detail-field .lbl{color:var(--text-muted);font-size:12px;flex:0 0 45%}
+.detail-field .val{color:var(--text);font-size:12.5px;font-weight:500;text-align:right;word-break:break-word}
+/* RM Pengelola Simpanan can list more than one name (comma-joined) — give it two
+   grid columns' width instead of one, so a longer list wraps within a wider
+   box instead of bulging a single narrow column. */
+.detail-field-wide{grid-column:span 2}
+.detail-section-title{
+  font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  color:#fff;background:var(--brand-darker);margin:14px 0 8px;
+  padding:6px 12px;display:block;border-radius:3px;
+}
+/* ===================== CUSTOMER HERO ===================== */
+.customer-hero{
+  background:var(--brand-dark);
+  color:#fff;border-radius:var(--radius-sm);padding:18px 22px;margin-bottom:16px;
+  box-shadow:none;position:relative;border-left:4px solid var(--accent);
+}
+.customer-hero-inner{position:relative;z-index:1}
+.customer-hero .label-tag{
+  display:inline-block;background:rgba(255,255,255,.18);padding:3px 10px;border-radius:3px;
+  font-size:11px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;
+}
+.customer-hero .cname{font-size:21px;font-weight:700;letter-spacing:-.2px}
+.customer-hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 20px;margin-top:14px;text-align:left}
+.customer-hero-grid .f-label{font-size:10.5px;opacity:.75;text-transform:uppercase;letter-spacing:.5px;text-align:left}
+.customer-hero-grid .f-value{font-size:13.5px;margin-top:2px;font-weight:600;text-align:left}
+.product-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.pill{padding:4px 11px;border-radius:14px;font-size:11px;font-weight:700;background:rgba(255,255,255,.16)}
+.pill.on{background:var(--accent);color:var(--brand-darker)}
+/* ===================== OPPORTUNITY CARDS ===================== */
+.opp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.opp-card{
+  cursor:pointer;border-radius:var(--radius-sm);padding:16px 14px;border:1px solid var(--border);
+  background:var(--surface-alt);transition:border-color .1s;text-align:left;position:relative;
+}
+.opp-card:hover{border-color:var(--brand-mid)}
+.opp-card.active{border-color:var(--brand);border-width:2px;background:var(--accent-soft)}
+.opp-card .opp-icon{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--brand-dark);background:var(--accent);display:inline-block;padding:2px 8px;border-radius:3px;margin-bottom:8px}
+.opp-card .opp-count{font-size:26px;font-weight:800;color:var(--brand-dark);line-height:1}
+.opp-card .opp-label{font-size:12px;font-weight:700;color:var(--text);margin-top:6px}
+.opp-card .opp-sub{font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.4}
+.opp-card.disabled{opacity:.45}
+.opp-detail-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-top:6px}
+.opp-entry-list{display:flex;flex-direction:column;gap:10px}
+.opp-entry{border:1px solid var(--border);border-left:4px solid var(--brand);border-radius:var(--radius-sm);padding:12px 14px;background:var(--surface-alt)}
+.opp-entry-head{font-weight:700;font-size:13.5px;color:var(--text);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.cust-link{color:var(--text);text-decoration:none;cursor:pointer;border-bottom:1px dashed transparent}
+.cust-link:hover{color:var(--brand);border-bottom-color:var(--brand)}
+.opp-detail-empty{padding:24px;text-align:center;color:var(--text-muted);font-style:italic}
+.rec-note{
+  font-size:12px;color:var(--brand-dark);background:var(--accent-soft);border-left:3px solid var(--brand);
+  padding:10px 14px;border-radius:6px;margin-bottom:12px;line-height:1.6;text-align:left;
+}
+/* ===================== REKENING KORAN (Pipeline SME) ===================== */
+.rekkoran-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:8px}
+.partner-table{border-left:4px solid var(--border)}
+.partner-table.success{border-left-color:var(--success)}
+.partner-table.success table.data-table th{background:var(--success);border-bottom-color:#0a9d6e}
+.partner-table.success table.data-table th:hover{background:var(--success)}
+.partner-table.success table.data-table tbody tr:nth-child(even) td{background:#fff}
+.partner-table.success table.data-table tr:hover td{background:#fff}
+.partner-table.success table.data-table td{border-bottom-color:#d8d8d8;border-right-color:#d8d8d8}
+.partner-table.warning{border-left-color:var(--warning)}
+.partner-table.warning table.data-table th{background:var(--warning);border-bottom-color:#d69a12}
+.partner-table.warning table.data-table th:hover{background:var(--warning)}
+.partner-table.warning table.data-table tbody tr:nth-child(even) td{background:#fff}
+.partner-table.warning table.data-table tr:hover td{background:#fff}
+.partner-table.warning table.data-table td{border-bottom-color:#d8d8d8;border-right-color:#d8d8d8}
+.rekkoran-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.sim-tag{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.5px;background:var(--warning);color:#fff;padding:2px 7px;border-radius:8px;margin-left:6px;vertical-align:middle}
+.pipeline-badges{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:14px}
+.pipeline-badge{border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--border);background:var(--surface-alt)}
+.pipeline-badge.pass{background:#e5f6ef;border-color:var(--success)}
+.pipeline-badge.pending{opacity:.65}
+.pipeline-badge .pb-tag{font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--brand-dark);text-transform:uppercase}
+.pipeline-badge.pass .pb-tag{color:#0a7d58}
+.pipeline-badge .pb-status{font-size:14px;font-weight:800;margin-top:3px;color:var(--text-soft)}
+.pipeline-badge.pass .pb-status{color:#0a7d58}
+.pipeline-badge .pb-detail{font-size:11px;color:var(--text-muted);margin-top:5px;line-height:1.5}
+.pipeline-badge .pb-window{font-size:10px;color:var(--text-soft);margin-top:5px;font-style:italic}
+/* ===================== REKENING KORAN MODAL =====================
+   A lightweight pop-up so the Rekening Koran / Pipeline SME evidence can be
+   checked directly from an opp-entry card (Peluang Pengembangan) without
+   needing to navigate away — funding-only prospects in particular have no
+   row in the Profil Nasabah table to click into. */
+.back-to-top{
+  display:none;position:fixed;right:22px;bottom:22px;z-index:900;
+  width:42px;height:42px;border-radius:50%;border:none;
+  background:var(--brand-dark);color:#fff;font-size:18px;font-weight:700;
+  box-shadow:var(--shadow-md);cursor:pointer;line-height:1;
+}
+.back-to-top:hover{background:var(--brand-darker)}
+.back-to-top.show{display:block}
+.rk-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+.rk-modal-overlay.show{display:flex}
+.rk-modal-box{background:var(--surface);border-radius:var(--radius);max-width:900px;width:100%;padding:22px 24px;box-shadow:var(--shadow-md);position:relative}
+.rk-modal-close{position:absolute;top:14px;right:16px;border:none;background:var(--surface-alt);color:var(--text-soft);width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;line-height:1}
+.rk-modal-close:hover{background:var(--border);color:var(--text)}
+.rk-modal-title{font-size:15px;font-weight:800;color:var(--brand-darker);margin-bottom:2px;padding-right:36px}
+.rk-modal-sub{font-size:12px;color:var(--text-muted);margin-bottom:14px}
+/* ===================== CHARTS ===================== */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+.charts-grid-2x2{grid-template-columns:repeat(2, minmax(360px, 1fr))}
+.chart-card{background:var(--surface);border-radius:var(--radius-sm);padding:18px;box-shadow:none;border:1px solid var(--border)}
+.chart-card h3{font-size:14px;margin-bottom:14px;color:var(--brand-darker);font-weight:700}
+.chart-canvas-wrap{position:relative;height:280px}
+/* ===================== EMPTY / TOAST ===================== */
+.empty{text-align:center;padding:40px 20px;color:var(--text-muted)}
+table.data-table td.empty{text-align:center}
+.toast-container{position:fixed;top:80px;right:24px;z-index:100;display:flex;flex-direction:column;gap:8px}
+.toast{
+  background:var(--surface);border-left:4px solid var(--brand);
+  padding:12px 16px;border-radius:8px;box-shadow:var(--shadow-lg);
+  display:flex;align-items:center;gap:10px;min-width:280px;max-width:400px;
+  font-size:13px;animation:slideIn .25s;
+}
+.toast.success{border-left-color:var(--success)}
+.toast.error{border-left-color:var(--danger)}
+.toast.warning{border-left-color:var(--warning)}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.info-banner{
+  font-size:12px;color:var(--brand-dark);background:var(--accent-soft);border-left:3px solid var(--brand);
+  padding:10px 14px;border-radius:6px;margin-bottom:14px;line-height:1.6;
+}
+.diag-row{padding:6px 12px;background:var(--surface-alt);border-radius:4px;margin-bottom:4px;font-size:12.5px}
+@media (max-width:768px){
+  .container{padding:14px}
+  .header-inner{flex-direction:column;align-items:flex-start;gap:10px}
+  .header-actions{width:100%}
+  .header-actions .btn{flex:1;justify-content:center}
+  .upload-intro{padding:16px 18px}
+  .upload-intro h2{font-size:17px}
+  .slot-grid{grid-template-columns:1fr}
+  .upload-actions{flex-direction:column;align-items:stretch}
+  .upload-actions .btn{width:100%;justify-content:center}
+  .global-filter-bar{flex-direction:column;align-items:stretch}
+  .gf-pill{min-width:0;width:100%}
+  .filter-bar{grid-template-columns:1fr}
+  .stats-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{flex:0 0 auto}
+  .opp-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .detail-content{padding:14px 16px}
+  .customer-hero{padding:16px}
+  .customer-hero .cname{font-size:18px}
+  .panel-body{padding:14px}
+  .charts-grid{grid-template-columns:1fr}
+  .chart-canvas-wrap{height:240px}
+}
+@media (max-width:480px){
+  .brand-text h1{font-size:16px}
+  .brand-text p{font-size:11px}
+  .btn{padding:8px 12px;font-size:12px}
+  .stat-value{font-size:18px}
+  table.data-table{font-size:11.5px}
+  .slot-card{padding:14px}
+}
+@media print{
+  .app-header,.tabs,.upload-intro,.slot-grid,.upload-actions,.progress-card,.filter-bar,
+  .panel-actions,.header-actions,.no-print,.row-toggle{display:none !important}
+  .container{max-width:none;padding:0;margin:0}
+  .panel{box-shadow:none;border:1px solid #ccc;page-break-inside:avoid;margin-bottom:10px}
+  .tab-panel{display:block !important}
+}
+</style>
+</head>
+<body>
+<header class="app-header no-print">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-text">
+        <h1>Dashboard Keterkaitan Pinjaman - Simpanan</h1>
+      </div>
+    </div>
+    <div class="header-actions" id="headerActions" style="display:none">
+      <button class="btn btn-light" id="btnExportExcel">Export Excel</button>
+    </div>
+  </div>
+</header>
+<div class="toast-container" id="toastContainer"></div>
+<main class="container">
+  <!-- ===================== UPLOAD SECTION ===================== -->
+  <section id="uploadSection">
+   <div class="upload-wrap">
+    <div class="upload-intro">
+      <p><code>LW321</code> wajib diupload. File lain opsional, di-<em>lookup</em> ke CIF LW321 untuk membentuk profil nasabah terintegrasi (pinjaman, simpanan, merchant).</p>
+    </div>
+    <div class="slot-grid" id="slotGrid"></div>
+    <div class="upload-actions">
+      <button class="btn btn-primary" id="btnProcess" disabled>Proses &amp; Bangun Dashboard</button>
+      <span class="upload-hint" id="processHint">Upload LW321 terlebih dahulu untuk mengaktifkan tombol ini.</span>
+    </div>
+    <div class="progress-card" id="progressCard">
+      <div class="progress-info">
+        <span id="progressLabel">Memproses data...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <p style="margin-top:10px;font-size:12px;color:var(--text-muted)" id="progressDetail">Mempersiapkan...</p>
+    </div>
+   </div>
+  </section>
+  <!-- ===================== DASHBOARD ===================== -->
+  <section class="dashboard" id="dashboard">
+    <div class="global-filter-bar no-print">
+      <div class="gf-pill">
+        <label>Tanggal Data</label>
+        <input class="gf-combo-input" id="gfAsOfDate" value="30/06/2026" title="Tanggal data pinjaman/simpanan ditarik">
+      </div>
+      <div class="gf-pill">
+        <label>Regional Office</label>
+        <input class="gf-combo-input" id="gfKanwil" list="gfKanwilList" placeholder="Semua Regional" autocomplete="off">
+        <datalist id="gfKanwilList"></datalist>
+      </div>
+      <div class="gf-pill">
+        <label>Branch Office</label>
+        <input class="gf-combo-input" id="gfKanca" list="gfKancaList" placeholder="Semua Cabang" autocomplete="off">
+        <datalist id="gfKancaList"></datalist>
+      </div>
+      <div class="gf-pill">
+        <label>Unit Kerja</label>
+        <input class="gf-combo-input" id="gfUker" list="gfUkerList" placeholder="Semua Unit Kerja" autocomplete="off">
+        <datalist id="gfUkerList"></datalist>
+      </div>
+      <div class="gf-pill">
+        <label>RM Pengelola Pinjaman</label>
+        <input class="gf-combo-input" id="gfRm" list="gfRmList" placeholder="Semua RM" autocomplete="off">
+        <datalist id="gfRmList"></datalist>
+      </div>
+      <div class="gf-pill">
+        <label>RM Pengelola Simpanan</label>
+        <input class="gf-combo-input" id="gfRmFt" list="gfRmFtList" placeholder="Semua RM FT" autocomplete="off">
+        <datalist id="gfRmFtList"></datalist>
+      </div>
+      <button class="btn btn-outline btn-sm" id="btnClearGlobalFilter">Reset Filter</button>
+      <span class="gf-hint" id="gfHint"></span>
+    </div>
+    <div class="tabs no-print" role="tablist">
+      <button class="tab active" data-panel="overview">Ringkasan</button>
+      <button class="tab" data-panel="customers">Profil Nasabah<span class="badge" id="badgeCust">0</span></button>
+      <button class="tab" data-panel="priority">Prioritas Pengelolaan<span class="badge" id="badgePriority">0</span></button>
+      <button class="tab" data-panel="opportunity">Peluang Pengembangan</button>
+    </div>
+    <!-- TAB: OVERVIEW -->
+    <div class="tab-panel active" id="panel-overview">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px">
+        <div>
+          <div class="detail-section-title">Pinjaman</div>
+          <div id="statsGridPinjaman"></div>
+        </div>
+        <div>
+          <div class="detail-section-title">Simpanan</div>
+          <div id="statsGridSimpanan"></div>
+        </div>
+        <div>
+          <div class="detail-section-title">Merchant</div>
+          <div id="statsGridMerchant"></div>
+        </div>
+      </div>
+      <div class="charts-grid charts-grid-2x2">
+        <div class="chart-card">
+          <h3>Top 10 Nasabah Pinjaman</h3>
+          <div class="chart-canvas-wrap"><canvas id="chartTopDebet"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Top 10 Nasabah Simpanan</h3>
+          <div class="chart-canvas-wrap"><canvas id="chartTopSimpanan"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Distribusi CASA to Loan Nasabah</h3>
+          <div class="chart-canvas-wrap"><canvas id="chartCoverageDist"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Top 10 RM Pairing (RM SME x RM FT)</h3>
+          <div class="table-wrap" style="height:280px;overflow-y:auto">
+            <table class="data-table" id="rmPairingTable">
+              <thead><tr>
+                <th class="num">#</th>
+                <th>RM SME</th>
+                <th>RM FT</th>
+                <th class="num">Jml Nasabah</th>
+                <th class="num">Total OS</th>
+              </tr></thead>
+              <tbody id="rmPairingBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- TAB: CUSTOMERS -->
+    <div class="tab-panel" id="panel-customers">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Profil Nasabah: Daftar Nasabah</div>
+          </div>
+          <div class="panel-actions"><span style="font-size:12px;color:var(--text-muted)" id="custCounter">0 nasabah</span></div>
+        </div>
+        <div class="panel-body">
+          <div class="filter-bar no-print">
+            <div class="search-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="input" id="custSearch" placeholder="Cari nama, CIF, atau no rekening...">
+            </div>
+            <select class="select" id="custFilterKol"><option value="">Semua Kolektibilitas</option><option value="1">Kol 1</option><option value="2">Kol 2</option><option value="3">Kol 3</option><option value="4">Kol 4</option><option value="5">Kol 5</option></select>
+            <select class="select" id="custFilterProduk">
+              <option value="">Semua Fasilitas</option>
+              <option value="noTabungan">Belum punya Tabungan</option>
+              <option value="noGiro">Belum punya Giro</option>
+              <option value="noDeposito">Belum punya Deposito</option>
+              <option value="noMerchantEdc">Belum punya EDC</option>
+              <option value="noMerchantQris">Belum punya QRIS</option>
+              <option value="hasOpp">Punya Peluang Pengembangan</option>
+            </select>
+            <select class="select" id="custFilterKondisi">
+              <option value="">Semua Kondisi</option>
+              <option value="casaMemenuhi">CASA Memenuhi</option>
+              <option value="trxAktif">Transaksi Aktif</option>
+              <option value="keduanya">Keduanya (CASA Memenuhi &amp; Transaksi Aktif)</option>
+            </select>
+            <button class="btn btn-outline btn-sm" id="btnClearCustFilter">Reset</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="custTable">
+              <thead>
+                <tr>
+                  <th style="width:30px"></th>
+                  <th class="sortable" data-sort="nama">Nama Nasabah</th>
+                  <th class="sortable num" data-sort="worstKol">Kol</th>
+                  <th class="sortable num" data-sort="totalPlafon">Plafon</th>
+                  <th class="sortable num" data-sort="totalBakiDebet">Baki Debet</th>
+                  <th class="sortable num" data-sort="totalCasa">Total CASA</th>
+                  <th class="sortable num" data-sort="casaToLoan" title="CASA to Loan: seberapa besar CASA (Tabungan+Giro) menutupi Outstanding (baki debet) pinjaman nasabah.">CASA to Loan ℹ️</th>
+                  <th>Fasilitas Dimiliki</th>
+                </tr>
+              </thead>
+              <tbody id="custBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- TAB: OPPORTUNITY -->
+    <div class="tab-panel" id="panel-opportunity">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Peluang Pengembangan</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="opp-grid" id="oppGrid"></div>
+          <div class="search-wrap no-print" style="margin-bottom:8px;max-width:420px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="input" id="oppSearch" placeholder="Cari nama nasabah atau CIF...">
+          </div>
+          <div id="oppPinjamanFilterWrap" style="display:none;margin-bottom:12px;gap:10px;flex-wrap:wrap">
+            <select class="select" id="oppPinjamanJenisFilter" style="max-width:220px">
+              <option value="">Semua Tipe Produk</option>
+              <option value="Tabungan">Tabungan</option>
+              <option value="Giro">Giro</option>
+              <option value="Deposito">Deposito</option>
+              <option value="EDC">EDC</option>
+              <option value="QRIS">QRIS</option>
+            </select>
+            <select class="select" id="oppPinjamanSortFilter" style="max-width:220px">
+              <option value="tanggal">Urutkan: Tanggal Terbaru</option>
+              <option value="saldo">Urutkan: Jumlah Saldo Terbesar</option>
+            </select>
+            <select class="select" id="oppKolFilter" style="max-width:220px;display:none">
+              <option value="">Semua Kolektabilitas</option>
+              <option value="3">Kol 3</option>
+              <option value="4">Kol 4</option>
+              <option value="5">Kol 5</option>
+            </select>
+          </div>
+          <div class="opp-detail-panel" id="oppDetail"><div class="opp-detail-empty">Pilih kategori peluang di atas untuk menampilkan daftar nasabah.</div></div>
+        </div>
+      </div>
+    </div>
+    <!-- TAB: PRIORITY VISIT MATRIX -->
+    <div class="tab-panel" id="panel-priority">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Prioritas Pengelolaan: CASA to Loan</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="kpiDplCard" style="max-width:620px;margin-bottom:16px"></div>
+          <div class="customer-hero" id="priorityBasisCard" style="padding:14px 20px;margin-bottom:18px">
+            <div class="customer-hero-inner" id="priorityBasisContent"></div>
+          </div>
+          <div class="detail-section-title">Ringkasan CASA to Loan</div>
+          <div class="opp-grid" id="priorityQuadGrid"></div>
+          <div class="detail-section-title">Daftar Prioritas Pengelolaan</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <div class="search-wrap no-print" style="max-width:420px;flex:1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="input" id="prioritySearch" placeholder="Cari nama nasabah atau CIF...">
+            </div>
+            <button class="btn btn-outline btn-sm no-print" id="btnClearPriorityFilter">Reset Pencarian &amp; Status</button>
+            <span style="font-size:12px;color:var(--text-muted)" id="priorityCounter"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="priorityTable">
+              <thead><tr>
+                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th>Status</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
+              </tr></thead>
+              <tbody id="priorityBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="rk-modal-overlay no-print" id="rkModalOverlay">
+    <div class="rk-modal-box" id="rkModalBox">
+      <button class="rk-modal-close" id="rkModalClose" title="Tutup" aria-label="Tutup">✕</button>
+      <div class="rk-modal-title" id="rkModalTitle"></div>
+      <div class="rk-modal-sub" id="rkModalSub"></div>
+      <div id="rkModalBody"></div>
+    </div>
+  </div>
+  <button id="btnBackToTop" class="back-to-top no-print" title="Kembali ke atas" aria-label="Kembali ke atas">&uarr;</button>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+/* ===================================================================
+   SLOT DEFINITIONS
+   ================================================================= */
+const SLOTS = [
+  {key:'LW321', title:'LW321, Pinjaman', required:true, ext:'.xlsx', match:['LW321','PINJAMAN'],
+   desc:'Key utama dashboard: kolektibilitas, plafon, baki debet, CIF.'},
+  {key:'DI_SIMPANAN', title:'Simpanan (Tabungan, Giro & Deposito), Multi PN by CIF', required:false, ext:'.xlsx', match:['MULTIPN','MULTI PN','MULTI_PN','SIMPANAN'],
+   desc:'Rekening tabungan, giro & deposito, lookup by CIF. Saldo pakai Ratas Saldo Marginal by CIF, sudah mencakup rekening di luar KC/unit kerja.'},
+  {key:'EDC', title:'Merchant EDC', required:false, ext:'.csv', match:['EDC'],
+   desc:'Merchant EDC, lookup by CIFNO.'},
+  {key:'QRIS', title:'Merchant QRIS', required:false, ext:'.csv', match:['QRIS'],
+   desc:'Merchant QRIS, lookup by CIF.'},
+  {key:'PRODUCT_HOLDING', title:'Product Holding', required:false, ext:'.xlsx', match:['PRODUCT HOLDING','PRODUCT_HOLDING','HOLDING'], multiple:true,
+   desc:'Opsional, bisa >1 file, digabung by CIF.'},
+];
+const State = {
+  files:{},        // key -> {file, name}
+  fileNames:{},     // key -> array of uploaded file names (slots with multiple:true accumulate here)
+  raw:{},          // key -> parsed array of row objects
+  customers:new Map(), // cif -> customer object (full, unfiltered universe)
+  globalFilter:{kanwil:'', kanca:'', uker:'', rm:'', rmFt:''}, // scope selected by top filter bar
+  filteredCust:[],
+  sortKey:null, sortDir:1,
+  expandedRows:new Set(),
+  activeOpp:null,
+  oppCategories:null,
+  priority:null,
+  activePriorityQuad:null,
+  priorityOverride:{os:null, cov:null},
+  charts:{},
+  diag:{},
+};
+function getScopedCustomers(){
+  const key = (State.customersVersion||0) + '|' + JSON.stringify(State.globalFilter);
+  if(State._scopedCache && State._scopedCacheKey === key) return State._scopedCache;
+  let list = [...State.customers.values()];
+  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
+  if(kanwil) list = list.filter(c => c.kanwil === kanwil);
+  if(kanca) list = list.filter(c => c.kanca === kanca);
+  if(uker) list = list.filter(c => c.uker === uker);
+  if(rm) list = list.filter(c => c.rmPengelola === rm);
+  if(rmFt) list = list.filter(c => c.rmFundingList.includes(rmFt));
+  State._scopedCache = list;
+  State._scopedCacheKey = key;
+  return list;
+}
+const RM_PAIRING = [
+  {rmFt:'Etha Rizki Aryani', rmSme:'Anang Hamdhani'},
+  {rmFt:'Krishna Rahardita', rmSme:'Nugroho Sigit Pamungkas'},
+  {rmFt:'Valentino Giovani', rmSme:'Rizky Wahanda Pratam'},
+  {rmFt:'Arif Budi Wibowo', rmSme:'Agung Bachtiar Al Haba'},
+  {rmFt:'Sefrin Insfiadri', rmSme:'Muhammad Nuhisa'},
+  {rmFt:'Ika Bekti Aryani', rmSme:'Bima Antariksa'},
+  {rmFt:'Mutiara Shafa', rmSme:'FL Susetyo Aryadi'},
+];
+function computeInferredRmPairing(customersMap){
+  const pairCounts = new Map();
+  customersMap.forEach(c => {
+    const rmSme = c.rmPengelola;
+    if(!rmSme || rmSme === '-') return;
+    (c.rmFundingList || []).forEach(rmFt => {
+      if(!rmFt || rmFt === '-') return;
+      if(!pairCounts.has(rmSme)) pairCounts.set(rmSme, new Map());
+      const m = pairCounts.get(rmSme);
+      m.set(rmFt, (m.get(rmFt)||0) + 1);
+    });
+  });
+  const inferredPairing = new Map();
+  pairCounts.forEach((ftCounts, rmSme) => {
+    let bestFt = null, bestCount = 0;
+    ftCounts.forEach((count, ft) => { if(count > bestCount){ bestCount = count; bestFt = ft; } });
+    if(bestFt) inferredPairing.set(rmSme, bestFt);
+  });
+  return inferredPairing;
+}
+function findPairedRmFt(rmSmeValue){
+  if(!rmSmeValue) return null;
+  if(State.inferredRmPairing && State.inferredRmPairing.has(rmSmeValue)) return State.inferredRmPairing.get(rmSmeValue);
+  const upper = rmSmeValue.toUpperCase();
+  const pair = RM_PAIRING.find(p => upper.includes(p.rmSme.toUpperCase()));
+  return pair ? pair.rmFt : null;
+}
+function findPairedRmSme(rmFtValue){
+  if(!rmFtValue) return null;
+  if(State.inferredRmPairing){
+    for(const [sme, ft] of State.inferredRmPairing.entries()){
+      if(ft.toUpperCase().includes(rmFtValue.toUpperCase()) || rmFtValue.toUpperCase().includes(ft.toUpperCase())) return sme;
+    }
+  }
+  const upper = rmFtValue.toUpperCase();
+  const pair = RM_PAIRING.find(p => upper.includes(p.rmFt.toUpperCase()));
+  return pair ? pair.rmSme : null;
+}
+function getOppScopedCustomers(){
+  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
+  let list = [...State.customers.values()];
+  if(kanwil) list = list.filter(c => c.kanwil === kanwil);
+  if(kanca) list = list.filter(c => c.kanca === kanca);
+  if(uker) list = list.filter(c => c.uker === uker);
+  if(rm) list = list.filter(c => c.rmPengelola === rm);
+  if(rmFt){
+    const pairedSme = findPairedRmSme(rmFt);
+    list = list.filter(c =>
+      (c.rmFundingList && c.rmFundingList.some(name => name.toUpperCase().includes(rmFt.toUpperCase()))) ||
+      (pairedSme && c.rmPengelola && c.rmPengelola.toUpperCase().includes(pairedSme.toUpperCase()))
+    );
+  }
+  return list;
+}
+function getScopedFundingOnlyProspects(){
+  let list = State.fundingOnlyProspects || [];
+  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
+  if(kanwil) list = list.filter(p => p.kanwil === kanwil);
+  if(kanca) list = list.filter(p => p.kanca === kanca);
+  if(uker) list = list.filter(p => p.uker === uker);
+  if(rm){
+    const pairedFt = findPairedRmFt(rm);
+    list = pairedFt ? list.filter(p => p.rmFundingList && p.rmFundingList.some(name => name.toUpperCase().includes(pairedFt.toUpperCase()))) : [];
+  }
+  if(rmFt) list = list.filter(p => p.rmFundingList && p.rmFundingList.some(name => name.toUpperCase().includes(rmFt.toUpperCase())));
+  return list;
+}
+/* ===================================================================
+   UTILITIES
+   ================================================================= */
+const fmtRupiah = v => {
+  if(v == null || v === '' || isNaN(v)) return '-';
+  const n = Number(v);
+  return 'Rp ' + n.toLocaleString('id-ID', {minimumFractionDigits:0, maximumFractionDigits:0});
+};
+const fmtNum = v => (v==null||v===''||isNaN(v)) ? '-' : Number(v).toLocaleString('id-ID');
+const fmtDec = (v, decimals=1) => (v==null||isNaN(v)) ? '-' : Number(v).toLocaleString('id-ID', {minimumFractionDigits:decimals, maximumFractionDigits:decimals});
+const parseNum = v => {
+  if(v == null || v === '') return 0;
+  if(typeof v === 'number') return v;
+  const s = String(v).replace(/Rp\.?\s*/gi,'').replace(/\s/g,'').replace(/,/g,'').trim();
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+const cleanStr = v => (v==null) ? '' : String(v).replace(/\s+/g,' ').trim();
+const cleanPn = v => { const s = cleanStr(v); return (!s || s==='-') ? '-' : s; };
+const combinePn = (a, b) => {
+  const pa = cleanPn(a), pb = cleanPn(b);
+  if(pa==='-' && pb==='-') return '-';
+  if(pb==='-') return pa;
+  if(pa==='-') return pb;
+  return pa + ' - ' + pb;
+};
+const normHeader = h => cleanStr(h).toUpperCase();
+const escapeHtml = s => { if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); };
+const showToast = (msg, type='info') => {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  $('toastContainer').appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(20px)'; t.style.transition='all .25s'; setTimeout(()=>t.remove(),250); }, 3400);
+};
+const KOL_LABEL = {1:'Lancar',2:'Dalam Perhatian Khusus',3:'Kurang Lancar',4:'Diragukan',5:'Macet'};
+/* ===================================================================
+   GENERIC TABLE PARSER (array-of-arrays -> array of objects)
+   ================================================================= */
+function findHeaderRow(aoa, requiredHeaders){
+  for(let i=0; i<Math.min(aoa.length, 25); i++){
+    const rowSet = new Set((aoa[i]||[]).map(normHeader));
+    if(requiredHeaders.every(h => rowSet.has(h))) return i;
+  }
+  return -1;
+}
+function buildRows(aoa, headerRowIdx, fieldMap, keyField){
+  const header = (aoa[headerRowIdx]||[]).map(normHeader);
+  const colIdx = {};
+  header.forEach((h,i)=>{ if(h && !(h in colIdx)) colIdx[h] = i; });
+  const resolved = {};
+  for(const field in fieldMap){
+    for(const variant of fieldMap[field]){
+      const nv = normHeader(variant);
+      if(nv in colIdx){ resolved[field] = colIdx[nv]; break; }
+    }
+  }
+  const out = [];
+  for(let r=headerRowIdx+1; r<aoa.length; r++){
+    const row = aoa[r];
+    if(!row) continue;
+    const obj = {};
+    let hasAny = false;
+    for(const field in resolved){
+      const v = row[resolved[field]];
+      obj[field] = v;
+      if(v !== '' && v != null) hasAny = true;
+    }
+    if(!hasAny) continue;
+    if(keyField && !cleanStr(obj[keyField])) continue;
+    out.push(obj);
+  }
+  return out;
+}
+/* ===================================================================
+   FIELD MAPS
+   ================================================================= */
+const MAP_LW321 = {
+  cif:['CIFNO'], namaDebitur:['NAMA_DEBITUR'], noRekening:['NOMOR_REKENING'],
+  kodeKanwil:['KODE_KANWIL'], kanwil:['KANWIL'], kodeKanca:['KODE_KANCA'], kanca:['KANCA'],
+  kodeUker:['KODE_UKER'], uker:['UKER'], lnType:['LN_TYPE'],
+  plafon:['PLAFON DALAM IDR','PLAFON'], baki:['BALANCE DALAM IDR'],
+  rate:['RATE'], tglRealisasi:['TGL_REALISASI'], tglJatuhTempo:['TGL JATUH TEMPO'],
+  jangkaWaktu:['JANGKA WAKTU'], flagRestruk:['FLAG RESTRUK'],
+  tunggakanPokok:['TUNGGAKAN POKOK'], tunggakanBunga:['TUNGGAKAN BUNGA'], tunggakanPinalti:['TUNGGAKAN PINALTI'],
+  code:['CODE'], description:['DESCRIPTION'], segmenLv1:['SEGMEN LV1'], descSegmenLv1:['DESC SEGMEN LV1'],
+  kolAdk:['KOL_ADK'], pnPengelola:['PN PENGELOLA SINGLEPN'], nextPmtDate:['NEXT_PMT_DATE'],
+};
+// Report Simpanan Multi PN: Tabungan, Giro & Deposito digabung dalam satu
+// file, semua dicocokkan by CIF (ganti CI324 yg cuma dicocokkan by nama &
+// tidak handle rekening di luar cabang). "Ratas Saldo Marginal" (polos) =
+// saldo per rekening; "Ratas Saldo Marginal by CIF" = saldo gabungan
+// nasabah ybs di seluruh unit kerja/cabang (dipakai sbg acuan CASA utama,
+// handle rekening di luar KC); "by CIF Uker" = saldo gabungan nasabah ybs
+// per unit kerja (disimpan, tidak dipakai untuk perhitungan saat ini, utk
+// kebutuhan revisi berikutnya).
+const MAP_DI_SIMPANAN = {
+  cif:['CIFNO'], nama:['NAMA NASABAH'], accountNumber:['NO REKENING'],
+  jenisSimpanan:['JENIS SIMPANAN'], prodCode:['DESKRIPSI PRODUK'], openDt:['TANGGAL PEMBUKAAN REKENING'],
+  matDt:['TANGGAL JATUH TEMPO'], rate:['RATE SIMPANAN'],
+  regionalOffice:['REGIONAL OFFICE'], kancaLabel:['KANTOR CABANG'], ukerLabel:['UNIT KERJA'],
+  pnPengelola:['PN MANTRI RM DANA'],
+  balance:['RATAS SALDO MARGINAL'],
+  balanceByCif:['RATAS SALDO MARGINAL BY CIF'],
+  balanceByCifUker:['RATAS SALDO MARGINAL BY CIF UKER'],
+};
+const MAP_EDC = {
+  cif:['CIFNO'], mid:['MID'], tid:['TID'], namaMerchant:['NAMA_MERCHANT'], jenis:['JENIS'],
+  jmlTransaksi:['JML_TRANSAKSI'], salesVolume:['SALES_VOLUME'], akumulasiTransaksi:['AKUMULASI_TRANSAKSI'],
+  akumulasiSalesVolume:['AKUMULASI_SALES_VOLUME'], ketMcc:['KET_MCC'], statusTransactional:['STATUS_TRANSACTIONAL'],
+  aktifOrStaging:['AKTIF_OR_STAGING'], tiering:['TIERING_SALES_VOLUME'],
+  pnUser:['PN_USER_PEMRAKARSA'], namaUser:['NAMA_USER_PEMRAKARSA'],
+};
+const MAP_QRIS = {
+  cif:['CIF'], namaMerchant:['NAMA_MERCHANT'], jenisUsaha:['JENIS_USAHA'], mcc:['MCC'], status:['STATUS'],
+  merchantType:['MERCHANT_TYPE'], akumulasiSvTotal:['AKUMULASI_SV_TOTAL'], posisiSvTotal:['POSISI_SV_TOTAL'],
+  akumulasiTrxTotal:['AKUMULASI_TRX_TOTAL'], saldoPosisi:['SALDO_POSISI'],
+  pn:['PN'], pnNama:['PN_PEMRAKASA'],
+};
+const PARSERS = {
+  LW321: {req:['CIFNO','NOMOR_REKENING'], map:MAP_LW321, key:'cif'},
+  DI_SIMPANAN: {req:['CIFNO','NO REKENING','RATAS SALDO MARGINAL BY CIF'], map:MAP_DI_SIMPANAN, key:'cif'},
+  EDC:   {req:['CIFNO','MID'], map:MAP_EDC, key:'cif'},
+  QRIS:  {req:['CIF','MERCHANT_PAN'], map:MAP_QRIS, key:'cif'},
+};
+/* ===================================================================
+   FILE READERS
+   ================================================================= */
+function readXlsxAsAOA(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const wb = XLSX.read(e.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+        resolve(aoa);
+      } catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+function readXlsxAsAOAWithMerges(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const wb = XLSX.read(e.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true});
+        resolve({aoa, merges: ws['!merges']||[]});
+      } catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+function readDelimitedAsAOA(file, delimiter){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const decoder = new TextDecoder('windows-1252');
+        const text = decoder.decode(e.target.result);
+        const lines = text.split(/\r\n|\n/).filter(l => l.length > 0);
+        const aoa = lines.map(l => l.split(delimiter));
+        resolve(aoa);
+      } catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+function parseProductHoldingAOA(aoa, merges){
+  const hdrIdx = findHeaderRow(aoa, ['CIFNO','PERIODE']);
+  if(hdrIdx < 0) throw new Error('Header kolom yang diharapkan (CIFNO, PERIODE) tidak ditemukan pada file ini.');
+  const subIdx = hdrIdx + 1;
+  const headerRow = aoa[hdrIdx] || [];
+  const subRow = aoa[subIdx] || [];
+  const normed = headerRow.map(normHeader);
+  const cifCol = normed.indexOf('CIFNO');
+  const periodeCol = normed.indexOf('PERIODE');
+  if(cifCol < 0) throw new Error('Kolom CIFNO tidak ditemukan pada file Product Holding.');
+  const nCols = Math.max(headerRow.length, subRow.length);
+  const cat = new Array(nCols).fill(null);
+  let last = null;
+  for(let i = cifCol+1; i < nCols; i++){
+    const v = headerRow[i];
+    if(v === undefined || v === null){ cat[i] = last; }
+    else if(v === ''){ cat[i] = null; last = null; }
+    else { cat[i] = cleanStr(v); last = cat[i]; }
+  }
+  (merges||[]).forEach(m => {
+    if(m.s.r === hdrIdx && m.e.r === hdrIdx && m.e.c > m.s.c && m.s.c > cifCol){
+      const anchorVal = headerRow[m.s.c];
+      if(anchorVal !== undefined && anchorVal !== null && anchorVal !== ''){
+        const label = cleanStr(anchorVal);
+        for(let c = m.s.c; c <= m.e.c; c++) cat[c] = label;
+      }
+    }
+  });
+  const groupDefs = [];
+  let i = cifCol+1;
+  while(i < nCols){
+    const c = cat[i];
+    if(c == null){ i++; continue; }
+    const cols = [i];
+    let j = i+1;
+    while(j < nCols && cat[j] === c){ cols.push(j); j++; }
+    groupDefs.push({category:c, cols});
+    i = j;
+  }
+  const findStandaloneCol = label => {
+    for(let k = cifCol+1; k < nCols; k++){
+      if(cat[k] == null && cleanStr(subRow[k]).toUpperCase() === label) return k;
+    }
+    return -1;
+  };
+  const tfCol = findStandaloneCol('TF');
+  const totalProdukCol = findStandaloneCol('TOTAL PRODUK');
+  const rows = [];
+  for(let r = subIdx+1; r < aoa.length; r++){
+    const row = aoa[r];
+    if(!row) continue;
+    const cif = cleanStr(row[cifCol]);
+    if(!cif) continue;
+    const groups = groupDefs.map(g => {
+      const flagRaw = row[g.cols[0]];
+      const metrics = {};
+      for(let k=1; k<g.cols.length; k++){
+        const label = cleanStr(subRow[g.cols[k]]);
+        if(label) metrics[label] = row[g.cols[k]];
+      }
+      return {category:g.category, flag: parseNum(flagRaw) > 0, metrics};
+    });
+    rows.push({
+      cif,
+      periode: periodeCol>=0 ? cleanStr(row[periodeCol]) : '',
+      groups,
+      tf: tfCol>=0 ? parseNum(row[tfCol]) : 0,
+      totalProduk: totalProdukCol>=0 ? parseNum(row[totalProdukCol]) : 0,
+    });
+  }
+  return rows;
+}
+async function parseFileForSlot(key, file){
+  if(key === 'PRODUCT_HOLDING'){
+    const {aoa, merges} = await readXlsxAsAOAWithMerges(file);
+    return parseProductHoldingAOA(aoa, merges);
+  }
+  const cfg = PARSERS[key];
+  let aoa;
+  if(file.name.toLowerCase().endsWith('.csv')){
+    aoa = await readDelimitedAsAOA(file, '|');
+  } else {
+    aoa = await readXlsxAsAOA(file);
+  }
+  const hdrIdx = findHeaderRow(aoa, cfg.req);
+  if(hdrIdx < 0) throw new Error('Header kolom yang diharapkan tidak ditemukan pada file ini.');
+  const rows = buildRows(aoa, hdrIdx, cfg.map, cfg.key);
+  return rows;
+}
+/* ===================================================================
+   REKENING KORAN (Pipeline SME) — SIMULATED / DUMMY
+   ================================================================= */
+const PIPELINE_THRESHOLDS = {
+  casaOptimal:      {casaMin:100000000, freqMin:30,  label:'12 bulan'},
+  merchant:         {casaMin:100000000, freqMin:100, label:'6 bulan'},
+  transaksiOptimal: {creditMin:800000000, casaMin:50000000, label:'6 bulan', minMonthsUmurRekening:12},
+};
+function seededRand(key){
+  let seed = 0;
+  const s = String(key);
+  for(let i=0;i<s.length;i++) seed = (seed*31 + s.charCodeAt(i)) >>> 0;
+  return () => { seed = (seed*1103515245 + 12345) >>> 0; return (seed % 100000)/100000; };
+}
+function generateDummyRekeningKoran(cif, fundingBase){
+  const rand = seededRand(cif + '|rekkoran');
+  const base = Math.max(fundingBase||0, 2000000);
+  const baseCasa = base * (0.4 + rand()*1.3);
+  const baseFreq = Math.round(4 + rand()*rand()*140);
+  const baseCreditMonthly = base * (0.3 + rand()*1.6);
+  const months = 12;
+  let year = 2026, month = 6;
+  const chron = [];
+  for(let i=0;i<months;i++){ chron.unshift({year, month}); month--; if(month<1){ month=12; year--; } }
+  return chron.map(({year, month}) => {
+    const noise = 0.7 + rand()*0.6;
+    return {
+      year, month,
+      freq: Math.max(0, Math.round(baseFreq*noise)),
+      totalCredit: Math.max(0, Math.round(baseCreditMonthly*noise)),
+      totalDebit: Math.max(0, Math.round(baseCreditMonthly*(0.5+rand()*0.7))),
+      avgDailyBalance: Math.max(0, Math.round(baseCasa*noise)),
+      simulated: true,
+    };
+  });
+}
+// Gabungkan beberapa seri rekening koran (per rekening) jadi satu seri
+// bulanan gabungan (dijumlah per bulan) — dipakai untuk evaluasi pipeline
+// & badge di level nasabah/relationship, bukan per rekening.
+function sumRekeningKoranSeries(seriesList){
+  const byKey = new Map();
+  seriesList.forEach(series => {
+    (series||[]).forEach(e => {
+      const key = `${e.year}-${e.month}`;
+      if(!byKey.has(key)) byKey.set(key, {year:e.year, month:e.month, freq:0, totalCredit:0, totalDebit:0, avgDailyBalance:0, simulated:true});
+      const agg = byKey.get(key);
+      agg.freq += e.freq; agg.totalCredit += e.totalCredit; agg.totalDebit += e.totalDebit; agg.avgDailyBalance += e.avgDailyBalance;
+    });
+  });
+  return [...byKey.values()].sort((a,b) => (a.year-b.year) || (a.month-b.month));
+}
+// Bangun rekening koran per rekening Tabungan/Giro (kalau data rekeningnya
+// tersedia), lalu jumlahkan jadi rekening koran gabungan level nasabah.
+// Kalau nasabah punya data riil (5 nasabah test) atau tidak punya rekening
+// Tabungan/Giro individual (mis. prospek merchant-only EDC/QRIS), tetap
+// pakai simulasi gabungan seperti sebelumnya (accounts:null).
+function buildEntityRekeningKoran(baseKey, nama, accounts, fallbackBase){
+  const real = lookupRealRekeningKoran(nama);
+  if(real) return {rekeningKoran: real, accounts: null};
+  if(accounts && accounts.length){
+    const withSeries = accounts.map(a => ({...a, series: generateDummyRekeningKoran(`${baseKey}|${a.jenis}|${a.noRekening}`, a.balance)}));
+    return {rekeningKoran: sumRekeningKoranSeries(withSeries.map(a=>a.series)), accounts: withSeries};
+  }
+  return {rekeningKoran: generateDummyRekeningKoran(baseKey, fallbackBase), accounts: null};
+}
+function evaluateRekeningKoranPipelines(entity){
+  const entries = entity.rekeningKoran || [];
+  const n = entries.length;
+  if(!n) return {monthsCovered:0, casaOptimal:false, merchant:false, transaksiOptimal:false};
+  const avg = (arr, field) => arr.reduce((s,e)=>s+e[field],0)/arr.length;
+  const sum = (arr, field) => arr.reduce((s,e)=>s+e[field],0);
+  const w12 = entries.slice(-12);
+  const w6 = entries.slice(-6);
+  const avgCasa12 = avg(w12,'avgDailyBalance'), avgFreq12 = avg(w12,'freq');
+  const sumCredit12 = sum(w12,'totalCredit'), sumDebit12 = sum(w12,'totalDebit');
+  const avgCasa6 = avg(w6,'avgDailyBalance'), avgFreq6 = avg(w6,'freq'), avgCreditMonthly6 = avg(w6,'totalCredit');
+  const overallAvgCredit = avg(entries,'totalCredit'), overallAvgDebit = avg(entries,'totalDebit');
+  return {
+    monthsCovered:n, monthsCasaWindow:w12.length, monthsShortWindow:w6.length,
+    avgCasa: avgCasa6, avgFreq: avgFreq6, avgCreditMonthly: avgCreditMonthly6,
+    avgCasa12, avgFreq12, sumCredit12, sumDebit12, overallAvgCredit, overallAvgDebit,
+    casaOptimal: avgCasa12>=PIPELINE_THRESHOLDS.casaOptimal.casaMin && avgFreq12>=PIPELINE_THRESHOLDS.casaOptimal.freqMin,
+    merchant: avgCasa6>=PIPELINE_THRESHOLDS.merchant.casaMin && avgFreq6>=PIPELINE_THRESHOLDS.merchant.freqMin,
+    // Umur rekening simpanan >12 bulan — diproksikan dari panjang riwayat
+    // rekening koran yang tersedia (n bulan). Kalau riwayatnya belum genap
+    // 12 bulan, dianggap rekeningnya belum cukup umur, jadi tidak lolos
+    // Transaksi Optimal walau kredit & CASA-nya sudah memenuhi.
+    transaksiOptimal: n>=PIPELINE_THRESHOLDS.transaksiOptimal.minMonthsUmurRekening && avgCreditMonthly6>=PIPELINE_THRESHOLDS.transaksiOptimal.creditMin && avgCasa6>=PIPELINE_THRESHOLDS.transaksiOptimal.casaMin,
+  };
+}
+function rekKoranMonthLabel(y, m){
+  const names = ['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return `${names[m]} ${y}`;
+}
+const REAL_REKENING_KORAN = {
+  'BUANA PAKSA': [
+    {year:2025, month:7,  freq:17, totalCredit:38161871,    totalDebit:150024874, avgDailyBalance:99538657},
+    {year:2025, month:8,  freq:24, totalCredit:134471305,   totalDebit:22030101,  avgDailyBalance:133967235},
+    {year:2025, month:9,  freq:21, totalCredit:51502080,    totalDebit:115803716, avgDailyBalance:124337332},
+    {year:2025, month:10, freq:28, totalCredit:114625416,   totalDebit:115658383, avgDailyBalance:102729400},
+    {year:2025, month:11, freq:23, totalCredit:98627068,    totalDebit:15034,     avgDailyBalance:174052239},
+    {year:2025, month:12, freq:30, totalCredit:1787649520,  totalDebit:586766034, avgDailyBalance:287137090},
+    {year:2026, month:1,  freq:50, totalCredit:1135774937,  totalDebit:1843807987,avgDailyBalance:531146846},
+    {year:2026, month:2,  freq:29, totalCredit:222400467,   totalDebit:653005041, avgDailyBalance:595908063},
+    {year:2026, month:3,  freq:24, totalCredit:142380945,   totalDebit:3519089,   avgDailyBalance:374753080},
+    {year:2026, month:4,  freq:35, totalCredit:82583382,    totalDebit:379640318, avgDailyBalance:193707743},
+    {year:2026, month:5,  freq:30, totalCredit:182585274,   totalDebit:122322383, avgDailyBalance:184747452},
+    {year:2026, month:6,  freq:21, totalCredit:80796500,    totalDebit:133318621, avgDailyBalance:196810369},
+  ].map(e => ({...e, simulated:false})),
+  'KARYA SATRIA': [
+    {year:2025, month:7,  freq:9,  totalCredit:151248275,   totalDebit:34965843,  avgDailyBalance:133086009},
+    {year:2025, month:8,  freq:12, totalCredit:77613416,    totalDebit:98698286,  avgDailyBalance:186357862},
+    {year:2025, month:9,  freq:13, totalCredit:449347997,   totalDebit:77548940,  avgDailyBalance:269899936},
+    {year:2025, month:10, freq:16, totalCredit:12112407,    totalDebit:394815655, avgDailyBalance:434492380},
+    {year:2025, month:12, freq:20, totalCredit:78761883,    totalDebit:282113835, avgDailyBalance:418694554},
+    {year:2026, month:1,  freq:19, totalCredit:343519073,   totalDebit:530278503, avgDailyBalance:329861097},
+    {year:2026, month:2,  freq:10, totalCredit:4582831,     totalDebit:35696178,  avgDailyBalance:113000820},
+    {year:2026, month:3,  freq:12, totalCredit:100025036,   totalDebit:88376185,  avgDailyBalance:93328189},
+    {year:2026, month:4,  freq:16, totalCredit:500892260,   totalDebit:530109117, avgDailyBalance:125967265},
+    {year:2026, month:6,  freq:19, totalCredit:173137691,   totalDebit:176481235, avgDailyBalance:78872362},
+  ].map(e => ({...e, simulated:false})),
+  'VITA VERDIANA SARI': [
+    {year:2025, month:7,  freq:125, totalCredit:1676026110, totalDebit:1707551330,avgDailyBalance:15238218},
+    {year:2025, month:8,  freq:119, totalCredit:1756294761, totalDebit:1752655920,avgDailyBalance:11842770},
+    {year:2025, month:9,  freq:116, totalCredit:2025386105, totalDebit:2031458985,avgDailyBalance:12876412},
+    {year:2025, month:10, freq:107, totalCredit:2078152384, totalDebit:2078393639,avgDailyBalance:28351309},
+    {year:2025, month:11, freq:88,  totalCredit:1917005447, totalDebit:1913036353,avgDailyBalance:7406689},
+    {year:2025, month:12, freq:92,  totalCredit:2043767115, totalDebit:2047318749,avgDailyBalance:16265077},
+    {year:2026, month:1,  freq:102, totalCredit:1950578353, totalDebit:1945053685,avgDailyBalance:17707961},
+    {year:2026, month:2,  freq:99,  totalCredit:2282025985, totalDebit:2292688315,avgDailyBalance:15679269},
+    {year:2026, month:3,  freq:87,  totalCredit:1836699671, totalDebit:1812517966,avgDailyBalance:7402882},
+    {year:2026, month:4,  freq:86,  totalCredit:1807007055, totalDebit:1815656299,avgDailyBalance:30289912},
+    {year:2026, month:5,  freq:92,  totalCredit:2207978893, totalDebit:2186073341,avgDailyBalance:27507480},
+    {year:2026, month:6,  freq:53,  totalCredit:784383816,  totalDebit:765010407, avgDailyBalance:51476218},
+  ].map(e => ({...e, simulated:false})),
+  'MEKA ADIPRATAMA': [
+    {year:2026, month:4,  freq:5, totalCredit:1010000000, totalDebit:0,      avgDailyBalance:1010000000},
+    {year:2026, month:5,  freq:4, totalCredit:2369588,    totalDebit:382613, avgDailyBalance:1010865636},
+    {year:2026, month:6,  freq:3, totalCredit:3245483,    totalDebit:515763, avgDailyBalance:1014071991},
+  ].map(e => ({...e, simulated:false})),
+  'MUHAMAD KASTONI': [
+    {year:2025, month:7,  freq:143, totalCredit:928032959,  totalDebit:987241215,  avgDailyBalance:243791280},
+    {year:2025, month:8,  freq:152, totalCredit:474923295,  totalDebit:521741382,  avgDailyBalance:66063534},
+    {year:2025, month:9,  freq:89,  totalCredit:483645951,  totalDebit:504926970,  avgDailyBalance:34538331},
+    {year:2025, month:10, freq:119, totalCredit:374611003,  totalDebit:374537099,  avgDailyBalance:27758905},
+    {year:2025, month:11, freq:98,  totalCredit:372110888,  totalDebit:370387457,  avgDailyBalance:26787198},
+    {year:2025, month:12, freq:97,  totalCredit:440840510,  totalDebit:441143435,  avgDailyBalance:25200341},
+    {year:2026, month:1,  freq:111, totalCredit:802094163,  totalDebit:820411475,  avgDailyBalance:88070466},
+    {year:2026, month:2,  freq:76,  totalCredit:237307493,  totalDebit:220151344,  avgDailyBalance:16082643},
+    {year:2026, month:3,  freq:53,  totalCredit:108143019,  totalDebit:106976300,  avgDailyBalance:6153932},
+    {year:2026, month:4,  freq:86,  totalCredit:280904013,  totalDebit:278875750,  avgDailyBalance:13510126},
+    {year:2026, month:5,  freq:76,  totalCredit:2881227327, totalDebit:1596980763, avgDailyBalance:151173824},
+    {year:2026, month:6,  freq:96,  totalCredit:1591405041, totalDebit:1572188756, avgDailyBalance:56679116},
+  ].map(e => ({...e, simulated:false})),
+};
+function lookupRealRekeningKoran(nama){
+  if(!nama) return null;
+  const norm = s => normName(s).replace(/\b(PT|CV|UD|PD|KOPERASI|FIRMA|YAYASAN|KSP|BUMDES)\b/g,'').replace(/\s+/g,' ').trim();
+  const key = norm(nama);
+  if(!key) return null;
+  for(const k of Object.keys(REAL_REKENING_KORAN)){
+    if(key === norm(k) || key.includes(norm(k))) return REAL_REKENING_KORAN[k];
+  }
+  return null;
+}
+const REAL_REKENING_KORAN_PARTNERS = {
+  'BUANA PAKSA': {
+    topBuyers: [
+      {name:'ARY PRASANDY M', freq:5, total:551742400},
+      {name:'RISPILIHANTO', freq:8, total:365767800},
+      {name:'RETNO WARDANI', freq:4, total:307598000},
+      {name:'SUGENG WIDODO', freq:1, total:73920000},
+      {name:'WIDIARSO YULIA', freq:3, total:50304000},
+    ],
+    topSuppliers: [
+      {name:'INTI PRIMA KENCANA ABADI', freq:6, total:561291670},
+      {name:'CANDI ANUGRAH STEEL PT', freq:4, total:258859000},
+      {name:'KHARISMA KARYA PERTIWI P', freq:2, total:248378500},
+      {name:'INTI PRIMA KENCANA PT', freq:2, total:162502500},
+      {name:'KURNIA BESI BAJA PT', freq:2, total:158446500},
+    ],
+  },
+};
+function lookupRealPartners(nama){
+  if(!nama) return null;
+  const norm = s => normName(s).replace(/\b(PT|CV|UD|PD|KOPERASI|FIRMA|YAYASAN|KSP|BUMDES)\b/g,'').replace(/\s+/g,' ').trim();
+  const key = norm(nama);
+  if(!key) return null;
+  for(const k of Object.keys(REAL_REKENING_KORAN_PARTNERS)){
+    if(key === norm(k) || key.includes(norm(k))) return REAL_REKENING_KORAN_PARTNERS[k];
+  }
+  return null;
+}
+/* ===================================================================
+   SLOT UI
+   ================================================================= */
+function renderSlots(){
+  const grid = $('slotGrid');
+  grid.innerHTML = SLOTS.map(s => `
+    <div class="slot-card ${s.required?'required':''}" id="slotCard_${s.key}" data-slot="${s.key}">
+      <div class="slot-head">
+        <div class="slot-title">${s.title}</div>
+        <span class="slot-badge ${s.required?'req':'opt'}">${s.required?'Wajib':'Opsional'}</span>
+      </div>
+      <div class="slot-desc">${s.desc}</div>
+      <div class="slot-status" id="slotStatus_${s.key}">Belum diupload (${s.ext})</div>
+      <button class="slot-pick" id="slotPick_${s.key}">Pilih atau seret file ke sini</button>
+      <input type="file" class="slot-input" id="slotInput_${s.key}" accept="${s.ext},.xlsx,.csv" ${s.multiple?'multiple':''}>
+    </div>
+  `).join('');
+  SLOTS.forEach(s => {
+    const card = $('slotCard_'+s.key);
+    const input = $('slotInput_'+s.key);
+    const pick = $('slotPick_'+s.key);
+    pick.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      if(!input.files.length) return;
+      if(s.multiple) [...input.files].forEach(f => assignFileToSlot(s.key, f));
+      else assignFileToSlot(s.key, input.files[0]);
+    });
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('dragging'); });
+    card.addEventListener('dragleave', () => card.classList.remove('dragging'));
+    card.addEventListener('drop', e => {
+      e.preventDefault(); card.classList.remove('dragging');
+      const dropped = [...(e.dataTransfer.files||[])];
+      if(!dropped.length) return;
+      if(s.multiple) dropped.forEach(f => assignFileToSlot(s.key, f));
+      else assignFileToSlot(s.key, dropped[0]);
+    });
+  });
+  grid.addEventListener('dragover', e => e.preventDefault());
+  grid.addEventListener('drop', e => { e.preventDefault(); });
+}
+function detectSlotFromFilename(name){
+  const up = name.toUpperCase();
+  for(const s of SLOTS){
+    if(s.match.some(m => up.includes(m))) return s.key;
+  }
+  return null;
+}
+function mergeProductHoldingRows(existingRows, newRows){
+  const byCif = new Map();
+  (existingRows||[]).forEach(r => { if(r.cif) byCif.set(r.cif, r); });
+  (newRows||[]).forEach(r => { if(r.cif) byCif.set(r.cif, r); });
+  return [...byCif.values()];
+}
+function assignFileToSlot(key, file){
+  const slotDef = SLOTS.find(s => s.key === key);
+  const isMultiSlot = !!(slotDef && slotDef.multiple);
+  const statusEl = $('slotStatus_'+key);
+  const card = $('slotCard_'+key);
+  if(isMultiSlot){
+    State.files[key] = file;
+    State.fileNames[key] = State.fileNames[key] || [];
+    statusEl.textContent = `⏳ Memvalidasi ${file.name}...`;
+    card.classList.remove('filled');
+    parseFileForSlot(key, file).then(rows => {
+      State.raw[key] = mergeProductHoldingRows(State.raw[key], rows);
+      if(!State.fileNames[key].includes(file.name)) State.fileNames[key].push(file.name);
+      statusEl.className = 'slot-status ok';
+      statusEl.textContent = `✓ ${State.fileNames[key].length} file (${State.fileNames[key].join(', ')}), ${State.raw[key].length.toLocaleString('id-ID')} baris tergabung`;
+      card.classList.add('filled');
+      updateProcessButton();
+    }).catch(err => {
+      statusEl.className = 'slot-status err';
+      statusEl.textContent = `✗ Gagal membaca file ${file.name}: ${err.message}`;
+      updateProcessButton();
+    });
+    return;
+  }
+  State.files[key] = file;
+  statusEl.textContent = '⏳ Memvalidasi ' + file.name + '...';
+  card.classList.remove('filled');
+  parseFileForSlot(key, file).then(rows => {
+    State.raw[key] = rows;
+    statusEl.className = 'slot-status ok';
+    statusEl.textContent = `✓ ${file.name}, ${rows.length.toLocaleString('id-ID')} baris terbaca`;
+    card.classList.add('filled');
+    updateProcessButton();
+  }).catch(err => {
+    statusEl.className = 'slot-status err';
+    statusEl.textContent = `✗ Gagal membaca file: ${err.message}`;
+    delete State.raw[key];
+    updateProcessButton();
+  });
+}
+function updateProcessButton(){
+  const ok = !!State.raw['LW321'] && State.raw['LW321'].length > 0;
+  $('btnProcess').disabled = !ok;
+  $('processHint').textContent = ok ? 'Siap diproses.' : 'Upload LW321 dulu untuk mengaktifkan tombol ini.';
+}
+function setupGlobalDrop(){
+  const zone = $('uploadSection');
+  zone.addEventListener('dragover', e => e.preventDefault());
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    const files = [...(e.dataTransfer.files||[])];
+    files.forEach(f => {
+      const slot = detectSlotFromFilename(f.name);
+      if(slot) assignFileToSlot(slot, f);
+      else showToast('Tidak dikenali sebagai salah satu jenis file: ' + f.name, 'warning');
+    });
+  });
+}
+/* ===================================================================
+   BUILD CUSTOMER 360 (join everything to LW321 by CIF)
+   ================================================================= */
+function normName(n){
+  return cleanStr(n).toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+}
+// Kolom "Unit Kerja"/"Kantor Cabang"/"Regional Office" di report Simpanan
+// Multi PN formatnya "00678 -- KCP MAJAPAHIT" (kode -- nama). Dipisah biar
+// kode-nya bisa dicocokkan ke ukerCodeMap (dari LW321), nama-nya dipakai
+// sbg fallback kalau kodenya tidak ketemu di situ.
+function splitCodeLabel(v){
+  const s = cleanStr(v);
+  const m = s.match(/^(\S+)\s*--\s*(.+)$/);
+  if(m) return {code:cleanStr(m[1]), label:cleanStr(m[2])};
+  return {code:'', label:s};
+}
+function namesLikelyMatch(a, b){
+  if(!a || !b) return false;
+  if(a === b) return true;
+  const shorter = a.length < b.length ? a : b;
+  const longer = a.length < b.length ? b : a;
+  if(shorter.length >= 8 && longer.startsWith(shorter)) return true;
+  return false;
+}
+function buildCustomers(){
+  const customers = new Map();
+  const loanRows = State.raw['LW321'] || [];
+  loanRows.forEach(row => {
+    const cif = cleanStr(row.cif);
+    if(!cif) return;
+    if(!customers.has(cif)){
+      customers.set(cif, {
+        cif, nama: cleanStr(row.namaDebitur),
+        kanwil: cleanStr(row.kanwil), kanca: cleanStr(row.kanca),
+        uker: cleanStr(row.uker) || cleanStr(row.kanca),
+        loans:[], tabungan:[], giro:[], deposito:[], edc:[], qris:[],
+      });
+    }
+    const c = customers.get(cif);
+    row._plafon = parseNum(row.plafon);
+    row._baki = parseNum(row.baki);
+    row._kol = parseInt(row.kolAdk,10) || 1;
+    row._tunggakan = parseNum(row.tunggakanPokok) + parseNum(row.tunggakanBunga) + parseNum(row.tunggakanPinalti);
+    c.loans.push(row);
+  });
+  const diagCounts = {DI_SIMPANAN:{total:0,matched:0}, EDC:{total:0,matched:0}, QRIS:{total:0,matched:0}};
+  // cif -> {byCif: saldo gabungan CIF (dedup, sama di semua baris CIF ybs),
+  // ukerSums: Map(unit kerja label -> saldo gabungan CIF di uker itu, dedup
+  // per uker). Diisi dari kolom "Ratas Saldo Marginal by CIF"/"...by CIF
+  // Uker" saat ingest DI_SIMPANAN di bawah.
+  const casaByCifMap = new Map();
+  const ukerCodeMap = new Map();
+  loanRows.forEach(row => {
+    const code = cleanStr(row.kodeUker);
+    if(code && !ukerCodeMap.has(code)){
+      ukerCodeMap.set(code, {kanwil:cleanStr(row.kanwil), kanca:cleanStr(row.kanca), uker:cleanStr(row.uker)||cleanStr(row.kanca)});
+    }
+  });
+  const prospectMap = new Map();
+  function getProspect(cif, nama, ukerCode, directBranch){
+    if(!prospectMap.has(cif)) prospectMap.set(cif, {cif, nama:'', ukerCode:'', kanwil:'', kanca:'', uker:'', rmFundingList:[], tabungan:0, tabunganSum:0, giro:0, giroSum:0, deposito:0, depositoSum:0, edc:0, edcSum:0, qris:0, qrisSum:0, latestOpenDt:'',
+      tabunganAccts:[], giroAccts:[], depositoAccts:[], edcList:[], qrisList:[]});
+    const p = prospectMap.get(cif);
+    if(!p.nama && nama) p.nama = nama;
+    if(!p.ukerCode && ukerCode){
+      p.ukerCode = ukerCode;
+      const branch = ukerCodeMap.get(ukerCode);
+      if(branch){ p.kanwil = branch.kanwil; p.kanca = branch.kanca; p.uker = branch.uker; }
+      else if(directBranch){ p.kanwil = directBranch.kanwil || p.kanwil; p.kanca = directBranch.kanca || p.kanca; p.uker = directBranch.uker || p.uker; }
+    }
+    return p;
+  }
+  function bumpOpenDt(p, dt){
+    dt = cleanStr(dt);
+    if(dt && dt > p.latestOpenDt) p.latestOpenDt = dt;
+  }
+  function addProspectRmFt(p, pn){
+    pn = cleanPn(pn);
+    if(pn && pn !== '-' && !p.rmFundingList.includes(pn)) p.rmFundingList.push(pn);
+  }
+  (State.raw['DI_SIMPANAN']||[]).forEach(row => {
+    const jenis = cleanStr(row.jenisSimpanan).toUpperCase();
+    // File-nya gabungan Tabungan/Giro/Deposito, semua dicocokkan by CIF
+    // (bukan CI324 lagi, yg cuma dicocokkan by nama & tidak handle rekening
+    // di luar cabang). Deposito diproses persis seperti Tabungan/Giro di
+    // bawah, cuma masuk ke c.deposito/p.deposito.
+    if(jenis !== 'TABUNGAN' && jenis !== 'GIRO' && jenis !== 'DEPOSITO') return;
+    diagCounts.DI_SIMPANAN.total++;
+    const cif = cleanStr(row.cif);
+    row._balance = parseNum(row.balance);
+    row._balanceByCif = parseNum(row.balanceByCif);
+    row._balanceByCifUker = parseNum(row.balanceByCifUker);
+    if(cif){
+      // "Ratas Saldo Marginal by CIF" identik di semua baris CIF ybs (semua
+      // jenis simpanan & semua unit kerja) -> ambil sekali saja (dedup),
+      // jangan dijumlah antar baris (kalau dijumlah akan double count).
+      // Diisi dari SEMUA jenis simpanan (termasuk Deposito) krn nilainya
+      // sama saja di baris manapun milik CIF tsb.
+      if(!casaByCifMap.has(cif)) casaByCifMap.set(cif, {byCif: row._balanceByCif, ukerSums: new Map()});
+      const rec = casaByCifMap.get(cif);
+      const ukerLabel = cleanStr(row.ukerLabel);
+      // "by CIF Uker" juga berulang utk tiap baris di uker yg sama -> dedup
+      // per (CIF, uker), disimpan (tidak dipakai untuk hitungan saat ini).
+      if(!rec.ukerSums.has(ukerLabel)) rec.ukerSums.set(ukerLabel, row._balanceByCifUker);
+    }
+    const ukerSplit = splitCodeLabel(row.ukerLabel);
+    const kancaSplit = splitCodeLabel(row.kancaLabel);
+    const kanwilSplit = splitCodeLabel(row.regionalOffice);
+    const directBranch = {kanwil:kanwilSplit.label, kanca:kancaSplit.label, uker:ukerSplit.label};
+    if(customers.has(cif)){
+      if(jenis === 'TABUNGAN') customers.get(cif).tabungan.push(row);
+      else if(jenis === 'GIRO') customers.get(cif).giro.push(row);
+      else customers.get(cif).deposito.push(row);
+      diagCounts.DI_SIMPANAN.matched++;
+    } else if(cif){
+      const p = getProspect(cif, cleanStr(row.nama), ukerSplit.code, directBranch);
+      if(jenis === 'TABUNGAN'){
+        p.tabungan++; p.tabunganSum += row._balance;
+        if(row.accountNumber) p.tabunganAccts.push(cleanStr(row.accountNumber));
+      } else if(jenis === 'GIRO'){
+        p.giro++; p.giroSum += row._balance;
+        if(row.accountNumber) p.giroAccts.push(cleanStr(row.accountNumber));
+      } else {
+        p.deposito++; p.depositoSum += row._balance;
+        if(row.accountNumber) p.depositoAccts.push(cleanStr(row.accountNumber));
+      }
+      bumpOpenDt(p, row.openDt);
+      addProspectRmFt(p, row.pnPengelola);
+    }
+  });
+  (State.raw['EDC']||[]).forEach(row => {
+    diagCounts.EDC.total++;
+    const cif = cleanStr(row.cif);
+    if(customers.has(cif)){
+      row._volume = parseNum(row.akumulasiSalesVolume || row.salesVolume);
+      row._trx = parseNum(row.akumulasiTransaksi || row.jmlTransaksi);
+      customers.get(cif).edc.push(row);
+      diagCounts.EDC.matched++;
+    } else if(cif){
+      const p = getProspect(cif, cleanStr(row.namaMerchant), '');
+      p.edc++; p.edcSum += parseNum(row.akumulasiSalesVolume || row.salesVolume);
+      p.edcList.push({mid:cleanStr(row.mid), namaMerchant:cleanStr(row.namaMerchant)});
+      addProspectRmFt(p, combinePn(row.pnUser, row.namaUser));
+    }
+  });
+  (State.raw['QRIS']||[]).forEach(row => {
+    diagCounts.QRIS.total++;
+    const cif = cleanStr(row.cif);
+    if(customers.has(cif)){
+      row._volume = parseNum(row.akumulasiSvTotal);
+      row._trx = parseNum(row.akumulasiTrxTotal);
+      customers.get(cif).qris.push(row);
+      diagCounts.QRIS.matched++;
+    } else if(cif){
+      const p = getProspect(cif, cleanStr(row.namaMerchant), '');
+      p.qris++; p.qrisSum += parseNum(row.akumulasiSvTotal);
+      p.qrisList.push({namaMerchant:cleanStr(row.namaMerchant)});
+      addProspectRmFt(p, combinePn(row.pn, row.pnNama));
+    }
+  });
+  State.fundingOnlyProspects = [...prospectMap.values()].sort((a,b) => (b.latestOpenDt||'').localeCompare(a.latestOpenDt||''));
+  State.fundingOnlyProspects.forEach(p => {
+    // CASA (Tabungan+Giro) prospek: pakai Ratas Saldo Marginal by CIF kalau
+    // ada (mencakup rekening di luar KC), fallback ke jumlah saldo per
+    // rekening yg terlihat di file kalau prospek ini tidak asalnya dari
+    // DI_SIMPANAN (mis. murni dari EDC/QRIS).
+    const casaCifRec = casaByCifMap.get(p.cif);
+    p.casaByCif = casaCifRec ? casaCifRec.byCif : null;
+    p.casaByCifUkerDetail = casaCifRec ? [...casaCifRec.ukerSums.entries()].map(([uker,value])=>({uker,value})) : [];
+    p.casaByCifUkerTotal = p.casaByCifUkerDetail.reduce((s,u)=>s+(u.value||0),0);
+    p.totalCasa = (p.casaByCif != null) ? p.casaByCif : ((p.tabunganSum||0) + (p.giroSum||0));
+    // Prospek cuma punya daftar no. rekening + total saldo (bukan saldo per
+    // rekening), jadi saldo dibagi rata ke tiap rekening tabungan/giro-nya.
+    const splitAccts = (jenis, accts, sum) => {
+      const list = (accts||[]).length ? accts : [];
+      if(!list.length) return [];
+      const per = sum/list.length;
+      return list.map(no => ({jenis, noRekening:no, balance:per}));
+    };
+    const accounts = [
+      ...splitAccts('Tabungan', p.tabunganAccts, p.tabunganSum||0),
+      ...splitAccts('Giro', p.giroAccts, p.giroSum||0),
+    ];
+    const built = buildEntityRekeningKoran(p.cif, p.nama, accounts, p.totalCasa + p.edcSum + p.qrisSum);
+    p.rekeningKoran = built.rekeningKoran;
+    p.rekeningKoranAccounts = built.accounts;
+    p.pipelineEval = evaluateRekeningKoranPipelines(p);
+  });
+  customers.forEach(c => {
+    c.totalPlafon = c.loans.reduce((s,l)=>s+l._plafon,0);
+    c.totalBakiDebet = c.loans.reduce((s,l)=>s+l._baki,0);
+    c.totalTunggakan = c.loans.reduce((s,l)=>s+l._tunggakan,0);
+    c.worstKol = c.loans.reduce((m,l)=>Math.max(m,l._kol),1);
+    c.hasRestruk = c.loans.some(l => cleanStr(l.flagRestruk).toUpperCase()==='Y');
+    c.totalTabungan = c.tabungan.reduce((s,t)=>s+t._balance,0);
+    c.totalGiro = c.giro.reduce((s,t)=>s+t._balance,0);
+    c.totalDeposito = c.deposito.reduce((s,t)=>s+t._balance,0);
+    // CASA (Tabungan+Giro): pakai Ratas Saldo Marginal by CIF (dedup, sama
+    // di semua baris CIF ybs) sbg acuan utama karena sudah mencakup rekening
+    // nasabah di unit kerja/KC lain, bukan cuma yg tercatat di baris² yg
+    // ketemu di file ini. totalTabungan/totalGiro di atas tetap dihitung dari
+    // baris yg terlihat (utk breakdown & daftar rekening/rekening koran per
+    // rekening), jadi bisa saja tidak persis sama dgn totalCasa kalau nasabah
+    // punya rekening di unit kerja yg datanya tdk lengkap di file ini.
+    // Ratas Saldo Marginal by CIF Uker tetap disimpan di
+    // c.casaByCifUkerDetail / c.casaByCifUkerTotal untuk revisi berikutnya.
+    const casaCifRec = casaByCifMap.get(c.cif);
+    c.casaByCif = casaCifRec ? casaCifRec.byCif : null;
+    c.casaByCifUkerDetail = casaCifRec ? [...casaCifRec.ukerSums.entries()].map(([uker,value])=>({uker,value})) : [];
+    c.casaByCifUkerTotal = c.casaByCifUkerDetail.reduce((s,u)=>s+(u.value||0),0);
+    c.totalCasa = (c.casaByCif != null) ? c.casaByCif : (c.totalTabungan + c.totalGiro);
+    c.totalFunding = c.totalCasa + c.totalDeposito;
+    c.totalMerchantVolume = c.edc.reduce((s,t)=>s+t._volume,0) + c.qris.reduce((s,t)=>s+t._volume,0);
+    c.totalMerchantTrx = c.edc.reduce((s,t)=>s+t._trx,0) + c.qris.reduce((s,t)=>s+t._trx,0);
+    // CASA to Loan: (Tabungan+Giro) / Baki Debet — deposito sengaja tidak
+    // ikut dihitung (CASA = current account & savings account, bukan
+    // deposito berjangka).
+    c.casaToLoan = c.totalBakiDebet > 0 ? (c.totalCasa / c.totalBakiDebet) : null;
+    c.rmPengelola = cleanPn(c.loans[0]?.pnPengelola);
+    c.rmFundingList = [...new Set([
+      ...c.tabungan.map(t => cleanPn(t.pnPengelola)),
+      ...c.giro.map(t => cleanPn(t.pnPengelola)),
+      ...c.deposito.map(t => cleanPn(t.pnPengelola)),
+      ...c.edc.map(m => combinePn(m.pnUser, m.namaUser)),
+      ...c.qris.map(m => combinePn(m.pn, m.pnNama)),
+    ].filter(v => v && v !== '-'))];
+    // Rekening koran dibangun per rekening Tabungan/Giro (pakai saldo asli
+    // masing-masing rekening), lalu dijumlah jadi rekening koran gabungan
+    // level nasabah untuk evaluasi pipeline & badge. Deposito tidak
+    // diikutkan karena bukan rekening transaksional.
+    const rkAccounts = [
+      ...c.tabungan.map(t => ({jenis:'Tabungan', noRekening:cleanStr(t.accountNumber)||'-', balance:t._balance||0})),
+      ...c.giro.map(t => ({jenis:'Giro', noRekening:cleanStr(t.accountNumber)||'-', balance:t._balance||0})),
+    ];
+    const builtRk = buildEntityRekeningKoran(c.cif, c.nama, rkAccounts, c.totalFunding);
+    c.rekeningKoran = builtRk.rekeningKoran;
+    c.rekeningKoranAccounts = builtRk.accounts;
+    c.pipelineEval = evaluateRekeningKoranPipelines(c);
+    // CASA MEMENUHI / TRANSAKSI AKTIF — sama seperti badge di Rekening Koran,
+    // dihitung sekali di sini agar bisa dipakai untuk filter di tabel nasabah.
+    c.casaMemenuhi = c.totalBakiDebet > 0 && (c.casaToLoan||0) >= 0.05;
+    c.trxAktif = (c.pipelineEval.avgFreq12||0) > 30;
+    const opp = [];
+    if(c.worstKol === 1){
+      if(c.pipelineEval.merchant && (c.edc.length===0 || c.qris.length===0)) opp.push('crossSellMerchant');
+    }
+    if(c.worstKol === 2) opp.push('quality');
+    if(c.worstKol >= 3) opp.push('kolWatch');
+    // CASA Optimal / Trx Optimal: tidak ada fasilitas kredit aktif, dan
+    // masing-masing pipeline dicek independen (bisa qualify salah satu,
+    // keduanya, atau tidak sama sekali).
+    if(c.totalBakiDebet === 0 && (c.tabungan.length || c.giro.length || c.deposito.length || c.edc.length || c.qris.length)){
+      if(c.pipelineEval.casaOptimal) opp.push('casaOptimal');
+      if(c.pipelineEval.transaksiOptimal) opp.push('trxOptimal');
+    }
+    c.opportunities = opp;
+    c.oppCount = opp.length;
+  });
+  const productHolding = new Map();
+  (State.raw['PRODUCT_HOLDING']||[]).forEach(row => {
+    if(row && row.cif) productHolding.set(row.cif, row);
+  });
+  State.productHolding = productHolding;
+  State.customers = customers;
+  State.customersVersion = (State.customersVersion||0) + 1;
+  State.diag = diagCounts;
+  State.inferredRmPairing = computeInferredRmPairing(customers);
+}
+/* ===================================================================
+   OPPORTUNITY CATEGORY DEFINITIONS
+   ================================================================= */
+const OPP_DEFS = {
+  casaOptimal:       {tag:'CASA OPTIMAL', label:'Pipeline Nasabah CASA Optimal', owner:'SME + Validasi FT', sub:'', rec:'Nasabah Simpanan BRI yang memiliki ratas saldo CASA Minimal Rp100 Juta selama 12 bulan dan memiliki frekuensi transaksi sebanyak 30 kali per bulan.'},
+  trxOptimal:        {tag:'TRX OPTIMAL', label:'Pipeline Nasabah Transaksi Optimal', owner:'SME + Validasi FT', sub:'', rec:'Nasabah dengan Transaksi kredit keseluruhan 6 bulan terakhir dengan ratas transaksi kredit bulanan minimum Rp800 Juta dan umur rekening simpanan lebih dari 12 bulan dan CASA minimum Rp50 Juta.'},
+  crossSellMerchant: {tag:'MERCHANT', label:'Pipeline Nasabah Merchant', owner:'FT', sub:'', rec:'Nasabah Merchant BRI yang sudah dikurasi dengan parameter, ratas CASA di BRI selama 6 bulan terakhir Minimal sebesar Rp100 juta per bulan dan ratas frekuensi transaksinya 100x per bulan.'},
+  quality:           {tag:'QUALITY', label:'Quality, Monitoring Lanjutan', owner:'SME', sub:'Kol 2, perlu monitoring sebelum memburuk ke Kol 3+.', rec:'Pantau komitmen pembayaran; koordinasi RM SME & FT agar tidak turun ke Kol 3.'},
+  kolWatch:          {tag:'RECOVERY', label:'Recovery, Monitoring Kolektibilitas', owner:'SME', sub:'Kol 3 ke atas, belum masuk kategori cross-sell.', rec:'Monitoring pembayaran, koordinasi RM SME & FT untuk joint OTS, atau fokus recovery/restrukturisasi.'},
+};
+function computeOppCategories(){
+  const cats = {};
+  Object.keys(OPP_DEFS).forEach(k => cats[k] = []);
+  getOppScopedCustomers().forEach(c => {
+    c.opportunities.forEach(k => { if(k !== 'casaOptimal' && k !== 'trxOptimal' && cats[k]) cats[k].push(c); });
+  });
+  cats.casaOptimal = buildLoanOppList('casaOptimal');
+  cats.trxOptimal = buildLoanOppList('transaksiOptimal');
+  State.oppCategories = cats;
+}
+// Shared builder for CASA Optimal / Trx Optimal — sama-sama nasabah/prospek
+// tanpa fasilitas kredit aktif, hanya beda pipeline mana yang divalidasi
+// (pipelineKey: 'casaOptimal' atau 'transaksiOptimal'). Non-exclusive:
+// nasabah yang qualify keduanya akan muncul di kedua kartu.
+function buildLoanOppList(pipelineKey){
+  const entries = [];
+  getScopedFundingOnlyProspects().forEach(p => {
+    const produk = [];
+    if(p.tabungan) produk.push('Tabungan');
+    if(p.giro) produk.push('Giro');
+    if(p.deposito) produk.push('Deposito');
+    if(p.edc) produk.push('EDC');
+    if(p.qris) produk.push('QRIS');
+    if(!produk.length) return;
+    if(!p.pipelineEval || !p.pipelineEval[pipelineKey]) return;
+    const saldo = (p.totalCasa||0) + (p.depositoSum||0) + p.edcSum + p.qrisSum;
+    entries.push({cif:p.cif, nama:p.nama, produk, saldo, openDt:p.latestOpenDt, ukerCode:p.ukerCode||'-', everHadLoan:false, pipelineEval:p.pipelineEval,
+      tabunganSum:p.tabunganSum, giroSum:p.giroSum, depositoSum:p.depositoSum||0, edcSum:p.edcSum, qrisSum:p.qrisSum,
+      rmSme:null, rmFt:p.rmFundingList||[],
+      noCifMatch: String(p.cif).startsWith('DEP:')});
+  });
+  getOppScopedCustomers().forEach(c => {
+    if(c.totalBakiDebet !== 0 || !c.pipelineEval || !c.pipelineEval[pipelineKey]) return;
+    if(!(c.tabungan.length || c.giro.length || c.deposito.length || c.edc.length || c.qris.length)) return;
+    const produk = [];
+    if(c.tabungan.length) produk.push('Tabungan');
+    if(c.giro.length) produk.push('Giro');
+    if(c.deposito.length) produk.push('Deposito');
+    if(c.edc.length) produk.push('EDC');
+    if(c.qris.length) produk.push('QRIS');
+    const dt = cleanStr(c.tabungan[0]?.openDt) || cleanStr(c.giro[0]?.openDt) || '';
+    entries.push({cif:c.cif, nama:c.nama, produk, saldo:c.totalFunding, openDt:dt, ukerCode:c.uker, everHadLoan:true, pipelineEval:c.pipelineEval, worstKol:c.worstKol,
+      tabunganSum:c.totalTabungan, giroSum:c.totalGiro, depositoSum:c.totalDeposito,
+      edcSum:c.edc.reduce((s,t)=>s+(t._volume||0),0), qrisSum:c.qris.reduce((s,t)=>s+(t._volume||0),0),
+      rmSme:c.rmPengelola, rmFt:c.rmFundingList||[]});
+  });
+  entries.sort((a,b) => {
+    const ba = looksLikeBadanUsaha(a.nama) ? 1 : 0, bb = looksLikeBadanUsaha(b.nama) ? 1 : 0;
+    if(ba !== bb) return bb - ba;
+    return (b.openDt||'').localeCompare(a.openDt||'');
+  });
+  return entries;
+}
+/* ===================================================================
+   GLOBAL FILTER BAR
+   ================================================================= */
+function populateGlobalFilterOptions(){
+  const all = [...State.customers.values()];
+  const kanwilSet = new Set(all.map(c=>c.kanwil).filter(Boolean));
+  $('gfKanwilList').innerHTML = [...kanwilSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  refreshKancaOptions();
+}
+function refreshKancaOptions(){
+  const kanwil = $('gfKanwil').value;
+  const all = [...State.customers.values()].filter(c => !kanwil || c.kanwil===kanwil);
+  const kancaSet = new Set(all.map(c=>c.kanca).filter(Boolean));
+  $('gfKancaList').innerHTML = [...kancaSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  refreshUkerOptions();
+}
+function refreshUkerOptions(){
+  const kanwil = $('gfKanwil').value, kanca = $('gfKanca').value;
+  const all = [...State.customers.values()].filter(c => (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca));
+  const ukerSet = new Set(all.map(c=>c.uker).filter(Boolean));
+  $('gfUkerList').innerHTML = [...ukerSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  refreshRmOptions();
+}
+function refreshRmOptions(){
+  const kanwil = $('gfKanwil').value, kanca = $('gfKanca').value, uker = $('gfUker').value;
+  const all = [...State.customers.values()].filter(c =>
+    (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca) && (!uker || c.uker===uker));
+  const rmSet = new Set(all.map(c=>c.rmPengelola).filter(v => v && v !== '-'));
+  $('gfRmList').innerHTML = [...rmSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  refreshRmFtOptions();
+}
+function refreshRmFtOptions(){
+  const kanwil = $('gfKanwil').value, kanca = $('gfKanca').value, uker = $('gfUker').value;
+  const all = [...State.customers.values()].filter(c =>
+    (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca) && (!uker || c.uker===uker));
+  const rmFtSet = new Set(all.flatMap(c => c.rmFundingList));
+  $('gfRmFtList').innerHTML = [...rmFtSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+}
+function applyGlobalFilter(){
+  State.globalFilter = {kanwil:$('gfKanwil').value, kanca:$('gfKanca').value, uker:$('gfUker').value, rm:$('gfRm').value, rmFt:$('gfRmFt').value};
+  const n = getScopedCustomers().length;
+  $('gfHint').textContent = `Menampilkan ${n.toLocaleString('id-ID')} dari ${State.customers.size.toLocaleString('id-ID')} nasabah`;
+  renderStats();
+  renderPriorityTab();
+  applyCustFilters();
+  renderOppGrid();
+  renderCharts();
+  renderRmPairingTable();
+}
+/* ===================================================================
+   RENDER: STATS
+   ================================================================= */
+function renderPinjamanSimpananMerchantStats(custs, ids, combineProspects){
+  const totalPlafon = custs.reduce((s,c)=>s+c.totalPlafon,0);
+  const totalBaki = custs.reduce((s,c)=>s+c.totalBakiDebet,0);
+  const agg = {tabungan:{sum:0,count:0}, giro:{sum:0,count:0}, deposito:{sum:0,count:0}, edc:{sum:0,count:0,trx:0}, qris:{sum:0,count:0,trx:0}};
+  let custSimpananCount = 0, custMerchantCount = 0;
+  custs.forEach(c => {
+    if(c.tabungan.length || c.giro.length || c.deposito.length) custSimpananCount++;
+    if(c.edc.length || c.qris.length) custMerchantCount++;
+    agg.tabungan.sum += c.totalTabungan; agg.tabungan.count += c.tabungan.length;
+    agg.giro.sum += c.totalGiro; agg.giro.count += c.giro.length;
+    agg.deposito.sum += c.totalDeposito; agg.deposito.count += c.deposito.length;
+    c.edc.forEach(m => { agg.edc.sum += m._volume||0; agg.edc.trx += m._trx||0; agg.edc.count++; });
+    c.qris.forEach(m => { agg.qris.sum += m._volume||0; agg.qris.trx += m._trx||0; agg.qris.count++; });
+  });
+  let totalNasabahSimpanan = custSimpananCount;
+  let totalNasabahMerchantCombined = custMerchantCount;
+  if(combineProspects){
+    const prospects = getScopedFundingOnlyProspects();
+    prospects.forEach(p => {
+      if(p.tabungan){ agg.tabungan.sum += p.tabunganSum; agg.tabungan.count += p.tabungan; }
+      if(p.giro){ agg.giro.sum += p.giroSum; agg.giro.count += p.giro; }
+      if(p.edc){ agg.edc.sum += p.edcSum; agg.edc.count += p.edc; }
+      if(p.qris){ agg.qris.sum += p.qrisSum; agg.qris.count += p.qris; }
+    });
+    totalNasabahSimpanan += prospects.filter(p => p.tabungan || p.giro).length;
+    totalNasabahMerchantCombined += prospects.filter(p => p.edc || p.qris).length;
+  }
+  const totalFunding = agg.tabungan.sum + agg.giro.sum + agg.deposito.sum;
+  const pinjamanCards = [
+    {label:'Total Nasabah Pinjaman', value:custs.length, sub:'', cls:'accent'},
+    {label:'Total Plafon Pinjaman', value:fmtRupiah(totalPlafon), sub:'', cls:''},
+    {label:'Total Baki Debet', value:fmtRupiah(totalBaki), sub:'', cls:''},
+  ];
+  const simpananCards = [
+    {label:'Total Nasabah Simpanan', value:totalNasabahSimpanan, sub:'', cls:'accent'},
+    {label:'Total Simpanan', value:fmtRupiah(totalFunding), sub:'', cls:'success'},
+    {label:'Tabungan', value:fmtRupiah(agg.tabungan.sum), sub:'', cls:''},
+    {label:'Giro', value:fmtRupiah(agg.giro.sum), sub:'', cls:''},
+    {label:'Deposito', value:fmtRupiah(agg.deposito.sum), sub:'', cls:''},
+  ];
+  const merchantCards = [
+    {label:'Total Nasabah Merchant', value:totalNasabahMerchantCombined, sub:'', cls:'accent'},
+    {label:'EDC', value:fmtRupiah(agg.edc.sum), sub:'', cls:''},
+    {label:'QRIS', value:fmtRupiah(agg.qris.sum), sub:'', cls:''},
+  ];
+  const renderTable = list => `
+    <div class="table-wrap"><table class="data-table">
+      <tbody>
+        ${list.map(c => `<tr><td>${c.label}</td><td class="num">${typeof c.value==='number' ? fmtNum(c.value) : c.value}</td></tr>`).join('')}
+      </tbody>
+    </table></div>
+  `;
+  if(ids.pinjaman) $(ids.pinjaman).innerHTML = renderTable(pinjamanCards);
+  if(ids.simpanan) $(ids.simpanan).innerHTML = renderTable(simpananCards);
+  if(ids.merchant) $(ids.merchant).innerHTML = renderTable(merchantCards);
+}
+function renderKpiDplCard(custs){
+  const totalBaki = custs.reduce((s,c)=>s+c.totalBakiDebet,0);
+  const totalCasa = custs.reduce((s,c)=>s+c.totalCasa,0);
+  const totalDpk = custs.reduce((s,c)=>s+c.totalFunding,0);
+  const casaPct = totalBaki > 0 ? (totalCasa / totalBaki * 100) : 0;
+  const dpkPct = totalBaki > 0 ? (totalDpk / totalBaki * 100) : 0;
+  $('kpiDplCard').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <div class="stat-card">
+        <div class="stat-label">Rasio CASA to Loan</div>
+        <div class="stat-value">${fmtDec(casaPct)}%</div>
+        <div class="stat-sub">CASA ${fmtRupiah(totalCasa)} / Baki Debet Pinjaman ${fmtRupiah(totalBaki)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rasio DPK to Loan</div>
+        <div class="stat-value">${fmtDec(dpkPct)}%</div>
+        <div class="stat-sub">Dana Pihak Ketiga ${fmtRupiah(totalDpk)} / Baki Debet Pinjaman ${fmtRupiah(totalBaki)}</div>
+      </div>
+    </div>
+  `;
+}
+function renderStats(){
+  const custs = getScopedCustomers();
+  $('badgeCust').textContent = custs.length;
+  renderPinjamanSimpananMerchantStats(custs, {pinjaman:'statsGridPinjaman', simpanan:'statsGridSimpanan', merchant:'statsGridMerchant'}, true);
+}
+/* ===================================================================
+   RENDER: CUSTOMER TABLE
+   ================================================================= */
+function applyCustFilters(){
+  const q = $('custSearch').value.toLowerCase().trim();
+  const kol = $('custFilterKol').value;
+  const prod = $('custFilterProduk').value;
+  const kondisi = $('custFilterKondisi').value;
+  let list = getScopedCustomers();
+  list = list.filter(c => {
+    if(kol && String(c.worstKol) !== kol) return false;
+    if(prod === 'noTabungan' && c.tabungan.length>0) return false;
+    if(prod === 'noGiro' && c.giro.length>0) return false;
+    if(prod === 'noDeposito' && c.deposito.length>0) return false;
+    if(prod === 'noMerchantEdc' && c.edc.length>0) return false;
+    if(prod === 'noMerchantQris' && c.qris.length>0) return false;
+    if(prod === 'hasOpp' && c.oppCount===0) return false;
+    if(kondisi === 'casaMemenuhi' && !c.casaMemenuhi) return false;
+    if(kondisi === 'trxAktif' && !c.trxAktif) return false;
+    if(kondisi === 'keduanya' && !(c.casaMemenuhi && c.trxAktif)) return false;
+    if(q){
+      const hay = `${c.nama} ${c.cif} ${c.loans.map(l=>l.noRekening).join(' ')}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if(State.sortKey){
+    list.sort((a,b) => {
+      let av = a[State.sortKey], bv = b[State.sortKey];
+      if(typeof av === 'string') av = av.toLowerCase();
+      if(typeof bv === 'string') bv = bv.toLowerCase();
+      if(av==null) av=''; if(bv==null) bv='';
+      return (av<bv?-1:av>bv?1:0) * State.sortDir;
+    });
+  } else {
+    list.sort((a,b) => b.totalBakiDebet - a.totalBakiDebet);
+  }
+  State.filteredCust = list;
+  renderCustTable();
+}
+function productPills(c){
+  const defs = [['T','Tabungan',c.tabungan.length>0],['G','Giro',c.giro.length>0],['D','Deposito',c.deposito.length>0],['E','EDC',c.edc.length>0],['Q','QRIS',c.qris.length>0]];
+  return defs.map(([code,label,on]) => `<span class="badge-pill ${on?'prod-yes':'prod-no'}" title="${label}">${code}</span>`).join(' ');
+}
+function renderCustTable(){
+  const body = $('custBody');
+  $('custCounter').textContent = `${State.filteredCust.length} dari ${State.customers.size} nasabah`;
+  if(!State.filteredCust.length){
+    body.innerHTML = '<tr><td colspan="8" class="empty">Tidak ada nasabah yang cocok dengan filter.</td></tr>';
+    return;
+  }
+  const rows = [];
+  State.filteredCust.forEach((c, i) => {
+    const isExpanded = State.expandedRows.has(c.cif);
+    rows.push(`
+      <tr class="${isExpanded?'expanded':''}" data-cif="${escapeHtml(c.cif)}">
+        <td><button class="row-toggle ${isExpanded?'open':''}" onclick="toggleCustRow('${escapeHtml(c.cif)}')">▶</button></td>
+        <td><strong>${escapeHtml(c.nama)}</strong></td>
+        <td class="num"><span class="badge-pill k-${c.worstKol}">Kol ${c.worstKol}</span></td>
+        <td class="num">${fmtRupiah(c.totalPlafon)}</td>
+        <td class="num">${fmtRupiah(c.totalBakiDebet)}</td>
+        <td class="num">${fmtRupiah(c.totalCasa)}</td>
+        <td class="num">${c.casaToLoan!=null ? fmtDec(c.casaToLoan*100)+'%' : '-'}</td>
+        <td>${productPills(c)}</td>
+      </tr>
+    `);
+    if(isExpanded){
+      rows.push(`<tr class="detail-row" data-detail-for="${escapeHtml(c.cif)}"><td colspan="8">${renderCustomerDetail(c)}</td></tr>`);
+    }
+  });
+  body.innerHTML = rows.join('');
+}
+window.toggleCustRow = function(cif){
+  if(State.expandedRows.has(cif)) State.expandedRows.delete(cif);
+  else State.expandedRows.add(cif);
+  renderCustTable();
+};
+function goToCustomerDetail(cif){
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+  const btn = document.querySelector('.tab[data-panel="customers"]');
+  if(btn) btn.classList.add('active');
+  $('panel-customers').classList.add('active');
+  $('custSearch').value = cif;
+  State.expandedRows.add(cif);
+  applyCustFilters();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+window.goToCustomerDetail = goToCustomerDetail;
+/* ===================================================================
+   RENDER: CUSTOMER DETAIL (Profil Nasabah)
+   ================================================================= */
+function buildPipelineNearMissNote(c){
+  const ev = c.pipelineEval;
+  if(!ev || !ev.monthsCovered) return null;
+  const T = PIPELINE_THRESHOLDS;
+  const hasActiveLoan = (c.totalBakiDebet||0) > 0;
+  const candidates = [];
+  if(hasActiveLoan){
+    if(!ev.merchant){
+      candidates.push({pipeline:'Nasabah Merchant', metric:'rata-rata CASA (ratas 6 bulan)', current:ev.avgCasa||0, min:T.merchant.casaMin, unit:'money'});
+      candidates.push({pipeline:'Nasabah Merchant', metric:'frekuensi transaksi (6 bulan)', current:ev.avgFreq||0, min:T.merchant.freqMin, unit:'freq'});
+    }
+  } else {
+    if(!ev.casaOptimal){
+      candidates.push({pipeline:'CASA Optimal', metric:'rata-rata CASA (ratas 12 bulan)', current:ev.avgCasa12||0, min:T.casaOptimal.casaMin, unit:'money'});
+      candidates.push({pipeline:'CASA Optimal', metric:'frekuensi transaksi (12 bulan)', current:ev.avgFreq12||0, min:T.casaOptimal.freqMin, unit:'freq'});
+    }
+    if(!ev.transaksiOptimal){
+      candidates.push({pipeline:'Transaksi Optimal', metric:'rata-rata transaksi kredit per bulan (6 bulan)', current:ev.avgCreditMonthly||0, min:T.transaksiOptimal.creditMin, unit:'money'});
+      candidates.push({pipeline:'Transaksi Optimal', metric:'rata-rata CASA (ratas 6 bulan)', current:ev.avgCasa||0, min:T.transaksiOptimal.casaMin, unit:'money'});
+    }
+  }
+  let best = null;
+  candidates.forEach(cd => {
+    if(cd.min <= 0) return;
+    const ratio = cd.current/cd.min;
+    if(ratio >= 0.5 && ratio < 1 && (!best || ratio > best.ratio)) best = {...cd, ratio};
+  });
+  if(!best) return null;
+  const fmtVal = v => best.unit==='freq' ? `${fmtDec(v)}x/bulan` : fmtRupiah(Math.round(v));
+  const gap = Math.max(0, best.min - best.current);
+  const actionText = best.unit==='freq'
+    ? 'dorong frekuensi transaksi rekening (migrasi mutasi debit/kredit rutin, payroll, pembayaran vendor, dsb, ke rekening BRI)'
+    : 'dorong top up CASA (Tabungan/Giro), misalnya mengarahkan penempatan dana idle atau hasil penjualan ke rekening BRI';
+  const targetText = hasActiveLoan ? 'kandidat Merchant baru' : 'kandidat CASA Optimal/Trx Optimal baru';
+  return `<div class="rec-note"><strong>Pipeline ${escapeHtml(best.pipeline)}, hampir tercapai (${Math.round(best.ratio*100)}%):</strong> ${escapeHtml(best.metric)} saat ini ${fmtVal(best.current)}, kurang ${fmtVal(gap)} dari ambang ${fmtVal(best.min)}. ${actionText} agar jadi ${targetText}.</div>`;
+}
+function renderOpportunityRecommendations(c){
+  const kol = c.worstKol;
+  const notes = [];
+  if(kol >= 3){
+    const kolLabel = KOL_LABEL[kol] || 'bermasalah';
+    notes.push(`<div class="rec-note" style="border-left-color:var(--danger);background:#fdeceb;color:#8a2f2f"><strong>Recovery (Kol ${kol} - ${escapeHtml(kolLabel)}):</strong> Fokus penanganan kredit bermasalah.</div>`);
+  } else if(kol === 2){
+    notes.push(`<div class="rec-note" style="border-left-color:var(--warning);background:#fdf3dd;color:#7a5a06"><strong>Monitoring (Kol 2):</strong> Pantau komitmen pembayaran sebelum kualitas memburuk.</div>`);
+  } else if(kol === 1 && c.priorityQuad === 'needsVisit'){
+    const threshold = 0.05;
+    const pct = (c.casaToLoan||0) * 100;
+    const targetCasa = c.totalBakiDebet * threshold;
+    const gap = Math.max(0, targetCasa - c.totalCasa);
+    notes.push(`<div class="rec-note"><strong>Joint OTS (Perlu Kunjungan):</strong> CASA to Loan baru ${fmtDec(pct)}% (di bawah ${fmtDec(threshold*100,0)}%), perlu top up CASA (Tabungan/Giro) min. ${fmtRupiah(Math.round(gap))}. Joint visit RM SME–FT.</div>`);
+  }
+  if(kol < 3){
+    c.opportunities.filter(k => k !== 'kolWatch' && k !== 'quality').forEach(k => {
+      notes.push(`<div class="rec-note"><strong>${OPP_DEFS[k].label}:</strong> ${OPP_DEFS[k].rec}</div>`);
+    });
+  }
+  if(!notes.length){
+    const nearMiss = kol < 3 ? buildPipelineNearMissNote(c) : null;
+    if(nearMiss){
+      notes.push(nearMiss);
+    } else if(kol === 1 && (c.totalBakiDebet||0) > 0){
+      const pct = (c.casaToLoan||0) * 100;
+      const ev = c.pipelineEval || {};
+      notes.push(`<div class="rec-note"><strong>Maintain & Monitoring:</strong> CASA to Loan memadai (${fmtDec(pct)}%). Belum ada peluang cross-sell baru terdeteksi, maintain relationship untuk kandidat suplesi ke depannya.</div>`);
+    } else {
+      notes.push('<div class="rec-note">Tidak ada peluang khusus terdeteksi untuk nasabah ini.</div>');
+    }
+  }
+  return notes.join('');
+}
+// Satu tabel rekening koran (bulan-per-bulan + baris Total/Rata-rata di
+// bawahnya). Dipakai baik untuk 1 rekening spesifik maupun untuk tampilan
+// gabungan (nasabah yang datanya riil / tidak punya rekening individual).
+function renderRekKoranTable(entries){
+  const monthRows = entries.map(e => `
+    <tr>
+      <td>${rekKoranMonthLabel(e.year, e.month)}</td>
+      <td class="num">${fmtNum(e.freq)}</td>
+      <td class="num">${fmtRupiah(e.totalCredit)}</td>
+      <td class="num">${fmtRupiah(e.totalDebit)}</td>
+      <td class="num">${fmtRupiah(e.avgDailyBalance)}</td>
+    </tr>
+  `).join('');
+  if(!monthRows){
+    return '<div class="table-wrap"><table class="data-table"><thead><tr><th>Bulan</th><th class="num">Freq Transaksi</th><th class="num">Total Kredit</th><th class="num">Total Debit</th><th class="num">Ratas Saldo (CASA)</th></tr></thead><tbody><tr><td colspan="5" class="empty">Belum ada data rekening koran.</td></tr></tbody></table></div>';
+  }
+  const tev = evaluateRekeningKoranPipelines({rekeningKoran:entries});
+  const totalRow = `
+    <tr style="font-weight:700;border-top:2px solid var(--border,#ccc)">
+      <td>Total / Rata-rata (${tev.monthsCasaWindow||tev.monthsCovered||0} Bulan)</td>
+      <td class="num">${fmtDec(tev.avgFreq12||0)}x/bln</td>
+      <td class="num">${fmtRupiah(Math.round(tev.sumCredit12||0))}</td>
+      <td class="num">${fmtRupiah(Math.round(tev.sumDebit12||0))}</td>
+      <td class="num">${fmtRupiah(Math.round(tev.avgCasa12||0))}</td>
+    </tr>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Bulan</th><th class="num">Freq Transaksi</th><th class="num">Total Kredit</th><th class="num">Total Debit</th><th class="num">Ratas Saldo (CASA)</th></tr></thead><tbody>${monthRows}${totalRow}</tbody></table></div>`;
+}
+function renderRekeningKoranSection(c){
+  const entries = c.rekeningKoran || [];
+  const ev = c.pipelineEval || evaluateRekeningKoranPipelines(c);
+  const n = ev.monthsCovered || 0;
+  const isReal = entries.length>0 && entries.every(e => e.simulated===false);
+  // Kalau ada breakdown per rekening (Tabungan/Giro), tampilkan tabel
+  // terpisah untuk tiap rekening. Kalau tidak (data riil gabungan, atau
+  // nasabah/prospek tanpa rekening Tabungan/Giro individual), tampilkan
+  // satu tabel gabungan seperti sebelumnya.
+  let rekTablesHtml;
+  if(c.rekeningKoranAccounts && c.rekeningKoranAccounts.length){
+    rekTablesHtml = c.rekeningKoranAccounts.map(a => `
+      <div style="margin-top:10px">
+        <div class="detail-section-title" style="font-size:13px;margin:0 0 6px">${escapeHtml(a.jenis)} · No Rekening ${escapeHtml(String(a.noRekening))} <span class="sim-tag">SIMULASI</span></div>
+        ${renderRekKoranTable(a.series)}
+      </div>
+    `).join('');
+  } else {
+    rekTablesHtml = `<div style="margin-top:10px">${renderRekKoranTable(entries)}</div>`;
+  }
+
+  // CASA MEMENUHI / TRANSAKSI AKTIF — dua indikator sederhana pengganti
+  // badge Pipeline SME lama, dihitung langsung di sini agar bekerja untuk
+  // customer (punya totalBakiDebet/totalTabungan/totalGiro) maupun prospek
+  // funding-only (punya tabunganSum/giroSum, tanpa pinjaman).
+  const isCustomerObj = Array.isArray(c.loans);
+  const tabunganGiro = c.totalCasa != null ? c.totalCasa : (isCustomerObj ? (c.totalTabungan + c.totalGiro) : ((c.tabunganSum||0) + (c.giroSum||0)));
+  const bakiDebet = isCustomerObj ? (c.totalBakiDebet||0) : 0;
+  const casaApplicable = bakiDebet > 0;
+  const casaRatio = casaApplicable ? tabunganGiro/bakiDebet : null;
+  const casaMemenuhi = casaApplicable && casaRatio >= 0.05;
+  const trxAktif = (ev.avgFreq12||0) > 30;
+  function badge2(label, applicable, pass, detail){
+    return `
+      <div class="pipeline-badge ${pass?'pass':''}">
+        <div class="pb-tag">${label}</div>
+        <div class="pb-status">${applicable ? (pass?'MEMENUHI':'BELUM MEMENUHI') : 'TIDAK BERLAKU'}</div>
+        <div class="pb-detail">${detail}</div>
+      </div>`;
+  }
+  const casaBadge = badge2('CASA MEMENUHI', casaApplicable, casaMemenuhi,
+    casaApplicable ? `Simpanan ${fmtRupiah(tabunganGiro)} / Baki Debet Pinjaman ${fmtRupiah(bakiDebet)} = ${fmtDec(casaRatio*100)}% (ambang ≥5%)` : 'Tidak ada pinjaman aktif');
+  const trxBadge = badge2('TRANSAKSI AKTIF', true, trxAktif,
+    `Rata-rata ${fmtDec(ev.avgFreq12||0)}x/bulan (12 bulan${isReal?'':' simulasi'}), ambang >30x/bulan`);
+
+  const partners = lookupRealPartners(c.nama);
+  function partnerTable(title, list, variant){
+    const rows = list.map(p => `<tr><td>${escapeHtml(p.name)}</td><td class="num">${fmtNum(p.freq)}x</td><td class="num">${fmtRupiah(p.total)}</td></tr>`).join('');
+    return `<div class="table-wrap partner-table ${variant}"><table class="data-table"><thead><tr><th colspan="3">${title}</th></tr><tr><th>Nama</th><th class="num">Frekuensi</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  let partnerBlock;
+  if(partners){
+    partnerBlock = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:8px">${partnerTable('Top 5 Pengirim Dana Terbesar (indikasi Buyer)', partners.topBuyers, 'success')}${partnerTable('Top 5 Penerima Dana Terbesar (indikasi Supplier)', partners.topSuppliers, 'warning')}</div>`;
+  } else if(isReal){
+    partnerBlock = '<div class="upload-hint" style="margin-top:8px">Top 5 buyer/supplier belum bisa ditampilkan untuk nasabah ini, mayoritas transaksi pada mutasinya berupa setoran tunai/kode settlement tanpa nama pihak yang jelas, bukan transfer bernama, sehingga tidak cukup andal untuk dijadikan daftar top 5.</div>';
+  } else {
+    partnerBlock = '<div class="upload-hint" style="margin-top:8px">Top 5 buyer/supplier butuh data mutasi asli per transaksi, belum tersedia untuk data simulasi.</div>';
+  }
+
+  return `
+    <div class="rekkoran-box">
+      <div class="rekkoran-head">
+        <div>
+          <strong>Rekening Koran${isReal ? '' : ' <span class="sim-tag">SIMULASI</span>'}</strong>
+        </div>
+      </div>
+      ${rekTablesHtml}
+      <div class="stats-grid" style="margin-top:12px;margin-bottom:0">
+        <div class="stat-card success">
+          <div class="stat-label">Rata-rata Kredit / Bulan</div>
+          <div class="stat-value">${fmtRupiah(Math.round(ev.overallAvgCredit||0))}</div>
+          <div class="stat-sub">${n} bulan${isReal?'':' simulasi'} · gabungan semua rekening</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="stat-label">Rata-rata Debit / Bulan</div>
+          <div class="stat-value">${fmtRupiah(Math.round(ev.overallAvgDebit||0))}</div>
+          <div class="stat-sub">${n} bulan${isReal?'':' simulasi'} · gabungan semua rekening</div>
+        </div>
+      </div>
+      ${partnerBlock}
+      <div class="pipeline-badges">${casaBadge}${trxBadge}</div>
+    </div>
+  `;
+}
+function fmtHoldingMetric(label, v){
+  const isMoney = /BALANCE|ADB|AUM|PREMI|FBI/i.test(label);
+  const isCount = /JUMLAH|STATUS/i.test(label);
+  if(isMoney) return fmtRupiah(parseNum(v));
+  if(isCount) return fmtNum(parseNum(v));
+  return cleanStr(v) || '-';
+}
+function renderProductHoldingSection(cif){
+  if(!State.productHolding || State.productHolding.size === 0) return '';
+  const rec = State.productHolding.get(cif);
+  if(!rec) return '';
+  const held = (rec.groups||[]).filter(g => g.flag);
+  const fields = held.map(g => {
+    const metricStr = Object.entries(g.metrics||{})
+      .map(([label,v]) => `${escapeHtml(label.replace(/_/g,' '))}: ${fmtHoldingMetric(label, v)}`)
+      .join(', ');
+    return `<div class="detail-field"><span class="lbl">${escapeHtml(g.category.replace(/^\*/,''))}</span><span class="val">${metricStr || 'Aktif'}</span></div>`;
+  }).join('') || `<div class="upload-hint">Nasabah ini belum tercatat memiliki produk apa pun pada data Product Holding.</div>`;
+  return `
+    <div class="rekkoran-box" style="margin-top:12px">
+      <div class="rekkoran-head">
+        <div>
+          <strong>Product Holding${rec.periode ? ', Periode ' + escapeHtml(rec.periode) : ''}</strong>
+          <div class="upload-hint">Total produk dimiliki: <strong>${fmtNum(rec.totalProduk||held.length)}</strong>${rec.tf ? `, TF: ${fmtRupiah(rec.tf)}` : ''}</div>
+        </div>
+      </div>
+      <div class="detail-grid detail-grid-single" style="margin-top:10px">${fields}</div>
+    </div>
+  `;
+}
+function renderAccountDetailSection(entity){
+  if(!entity) return '';
+  const isCustomer = Array.isArray(entity.loans);
+  const tabunganAccts = isCustomer ? entity.tabungan.map(t=>cleanStr(t.accountNumber)).filter(Boolean) : (entity.tabunganAccts||[]);
+  const giroAccts = isCustomer ? entity.giro.map(t=>cleanStr(t.accountNumber)).filter(Boolean) : (entity.giroAccts||[]);
+  const depositoAccts = isCustomer ? entity.deposito.map(t=>cleanStr(t.accountNumber)).filter(Boolean) : (entity.depositoAccts||[]);
+  const edcList = isCustomer ? entity.edc.map(m=>({mid:cleanStr(m.mid), namaMerchant:cleanStr(m.namaMerchant)})) : (entity.edcList||[]);
+  const qrisList = isCustomer ? entity.qris.map(m=>({namaMerchant:cleanStr(m.namaMerchant)})) : (entity.qrisList||[]);
+  if(!tabunganAccts.length && !giroAccts.length && !depositoAccts.length && !edcList.length && !qrisList.length) return '';
+  const fields = [];
+  if(tabunganAccts.length) fields.push(`<div class="detail-field"><span class="lbl">No. Rekening Tabungan</span><span class="val">${escapeHtml(tabunganAccts.join(', '))}</span></div>`);
+  if(giroAccts.length) fields.push(`<div class="detail-field"><span class="lbl">No. Rekening Giro</span><span class="val">${escapeHtml(giroAccts.join(', '))}</span></div>`);
+  if(depositoAccts.length) fields.push(`<div class="detail-field"><span class="lbl">Cash Collateral, No. Rekening Deposito</span><span class="val">${escapeHtml(depositoAccts.join(', '))}</span></div>`);
+  if(edcList.length) fields.push(`<div class="detail-field"><span class="lbl">Merchant EDC</span><span class="val">${escapeHtml(edcList.map(m=>`${m.mid||'-'}${m.namaMerchant?' ('+m.namaMerchant+')':''}`).join(', '))}</span></div>`);
+  if(qrisList.length) fields.push(`<div class="detail-field"><span class="lbl">Merchant QRIS</span><span class="val">${escapeHtml(qrisList.map(m=>m.namaMerchant||'-').join(', '))}</span></div>`);
+  return `
+    <div class="rekkoran-box" style="margin-top:12px">
+      <div class="rekkoran-head"><div><strong>Detail Rekening</strong></div></div>
+      <div class="detail-grid detail-grid-single" style="margin-top:10px">${fields.join('')}</div>
+    </div>
+  `;
+}
+function showRekeningKoranModal(cif){
+  let entity = State.customers.get(cif);
+  let nama, subLabel;
+  if(entity){
+    nama = entity.nama;
+    subLabel = `CIF ${entity.cif} · Kol ${entity.worstKol} - ${KOL_LABEL[entity.worstKol]||''}`;
+  } else {
+    entity = (State.fundingOnlyProspects||[]).find(p => p.cif === cif);
+    if(!entity){
+      showToast('Data rekening koran nasabah ini tidak ditemukan.', 'error');
+      return;
+    }
+    nama = entity.nama;
+    subLabel = `CIF ${entity.cif} · Belum punya fasilitas kredit (nasabah funding/simpanan)`;
+  }
+  $('rkModalTitle').textContent = nama || '(tanpa nama)';
+  $('rkModalSub').textContent = subLabel;
+  $('rkModalBody').innerHTML = renderRekeningKoranSection(entity) + renderAccountDetailSection(entity) + renderProductHoldingSection(entity.cif);
+  $('rkModalOverlay').classList.add('show');
+}
+window.showRekeningKoranModal = showRekeningKoranModal;
+function closeRekeningKoranModal(){
+  $('rkModalOverlay').classList.remove('show');
+}
+window.closeRekeningKoranModal = closeRekeningKoranModal;
+function renderCustomerDetail(c){
+  const loansRows = c.loans.map(l => `
+    <tr>
+      <td>${escapeHtml(l.noRekening)}</td>
+      <td>${escapeHtml(l.description||l.lnType)}</td>
+      <td><span class="badge-pill k-${l._kol}">${l._kol} - ${KOL_LABEL[l._kol]||''}</span></td>
+      <td class="num">${fmtRupiah(l._plafon)}</td>
+      <td class="num">${fmtRupiah(l._baki)}</td>
+      <td class="num">${fmtRupiah(l._tunggakan)}</td>
+      <td class="ctr">${escapeHtml(l.rate)}%</td>
+      <td>${escapeHtml(l.tglJatuhTempo)}</td>
+      <td>${escapeHtml(cleanPn(l.pnPengelola))}</td>
+    </tr>
+  `).join('');
+  const tabunganRows = c.tabungan.map(t => `
+    <tr><td>${escapeHtml(t.accountNumber)}</td><td>${escapeHtml(t.prodCode)}</td><td class="num">${fmtRupiah(t._balance)}</td><td class="ctr">${escapeHtml(t.openDt)}</td><td>${escapeHtml(cleanPn(t.pnPengelola))}</td></tr>
+  `).join('') || '<tr><td colspan="5" class="empty">Belum ada rekening tabungan.</td></tr>';
+  const giroRows = c.giro.map(t => `
+    <tr><td>${escapeHtml(t.accountNumber)}</td><td>${escapeHtml(t.prodCode)}</td><td class="num">${fmtRupiah(t._balance)}</td><td class="ctr">${escapeHtml(t.openDt)}</td><td>${escapeHtml(cleanPn(t.pnPengelola))}</td></tr>
+  `).join('') || '<tr><td colspan="5" class="empty">Belum ada rekening giro.</td></tr>';
+  const depositoRows = c.deposito.map(t => `
+    <tr><td>${escapeHtml(t.accountNumber)}</td><td class="num">${fmtRupiah(t._balance)}</td><td>${escapeHtml(t.rate)}%</td><td>${escapeHtml(t.matDt)}</td><td>${escapeHtml(cleanPn(t.pnPengelola))}</td></tr>
+  `).join('') || '<tr><td colspan="5" class="empty">Belum ada rekening deposito.</td></tr>';
+  const merchantRows = [
+    ...c.edc.map(m => `<tr><td>EDC</td><td>${escapeHtml(m.namaMerchant)}</td><td>${escapeHtml(m.mid)}</td><td class="num ctr">${fmtNum(m._trx)}</td><td class="num">${fmtRupiah(m._volume)}</td><td class="ctr">${escapeHtml(combinePn(m.pnUser, m.namaUser))}</td></tr>`),
+    ...c.qris.map(m => `<tr><td>QRIS</td><td>${escapeHtml(m.namaMerchant)}</td><td>-</td><td class="num ctr">${fmtNum(m._trx)}</td><td class="num">${fmtRupiah(m._volume)}</td><td class="ctr">${escapeHtml(combinePn(m.pn, m.pnNama))}</td></tr>`),
+  ].join('') || '<tr><td colspan="6" class="empty">Belum ada merchant EDC/QRIS.</td></tr>';
+  const oppHtml = renderOpportunityRecommendations(c);
+  return `
+    <div class="detail-content">
+      <div class="customer-hero" style="margin-bottom:14px">
+        <div class="customer-hero-inner">
+          <span class="label-tag">Profil Nasabah</span>
+          <div class="cname">${escapeHtml(c.nama)}</div>
+          <div class="customer-hero-grid">
+            <div><div class="f-label">CIF</div><div class="f-value">${escapeHtml(c.cif)}</div></div>
+            <div><div class="f-label">Unit Kerja</div><div class="f-value">${escapeHtml(c.uker)}</div></div>
+            <div><div class="f-label">Kolektibilitas Terburuk</div><div class="f-value">${c.worstKol} - ${KOL_LABEL[c.worstKol]}</div></div>
+            <div><div class="f-label">RM Pengelola Pinjaman</div><div class="f-value">${escapeHtml(cleanPn(c.loans[0]?.pnPengelola))}</div></div>
+            <div><div class="f-label" title="CASA to Loan: (Tabungan+Giro) dibagi Outstanding (baki debet) pinjaman.">CASA to Loan ℹ️</div><div class="f-value">${c.casaToLoan!=null ? fmtDec(c.casaToLoan*100)+'%' : '-'}</div></div>
+          </div>
+          <div class="product-pills">
+            <span class="pill ${c.loans.length?'on':''}">Pinjaman ${c.loans.length}</span>
+            <span class="pill ${c.tabungan.length?'on':''}">Tabungan ${c.tabungan.length}</span>
+            <span class="pill ${c.giro.length?'on':''}">Giro ${c.giro.length}</span>
+            <span class="pill ${c.deposito.length?'on':''}">Deposito ${c.deposito.length}</span>
+            <span class="pill ${c.edc.length?'on':''}">EDC ${c.edc.length}</span>
+            <span class="pill ${c.qris.length?'on':''}">QRIS ${c.qris.length}</span>
+          </div>
+        </div>
+      </div>
+      <div class="detail-section-title">Rekomendasi</div>
+      ${oppHtml}
+      <div class="detail-section-title">Fasilitas Kredit (${c.loans.length})</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>No Rekening</th><th>Jenis</th><th>Kol</th><th class="num">Plafon</th><th class="num">Baki Debet</th><th class="num">Tunggakan</th><th class="ctr">Rate</th><th>Jatuh Tempo</th><th>RM Pengelola Pinjaman</th></tr></thead><tbody>${loansRows}</tbody></table></div>
+      <div class="detail-section-title">Tabungan (${c.tabungan.length})</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>No Rekening</th><th>Produk</th><th class="num">Saldo</th><th class="ctr">Tgl Buka</th><th>RM Pengelola Simpanan</th></tr></thead><tbody>${tabunganRows}</tbody></table></div>
+      <div class="detail-section-title">Giro (${c.giro.length})</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>No Rekening</th><th>Produk</th><th class="num">Saldo</th><th class="ctr">Tgl Buka</th><th>RM Pengelola Simpanan</th></tr></thead><tbody>${giroRows}</tbody></table></div>
+      <div class="detail-section-title">Deposito (${c.deposito.length})</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>No Rekening</th><th class="num">Nominal</th><th>Rate</th><th>Jatuh Tempo</th><th>RM Pengelola Simpanan</th></tr></thead><tbody>${depositoRows}</tbody></table></div>
+      <div class="detail-section-title">Merchant EDC / QRIS (${c.edc.length + c.qris.length})</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Tipe</th><th>Nama Merchant</th><th>MID</th><th class="num ctr">Transaksi</th><th class="num">Volume</th><th class="ctr">RM Pengelola Simpanan</th></tr></thead><tbody>${merchantRows}</tbody></table></div>
+      <div class="detail-section-title">Rekening Koran</div>
+      ${renderRekeningKoranSection(c)}
+      ${renderProductHoldingSection(c.cif)}
+    </div>
+  `;
+}
+/* ===================================================================
+   RENDER: OPPORTUNITY TAB
+   ================================================================= */
+const OPP_GRID_KEYS = Object.keys(OPP_DEFS).filter(k => k !== 'quality' && k !== 'kolWatch');
+function renderOppGrid(){
+  computeOppCategories();
+  State.activeOpps = new Set();
+  const grid = $('oppGrid');
+  grid.innerHTML = OPP_GRID_KEYS.map(k => {
+    const def = OPP_DEFS[k];
+    const list = State.oppCategories[k];
+    const isEmpty = list.length === 0;
+    return `
+      <div class="opp-card ${isEmpty?'disabled':''}" data-opp="${k}" onclick="${isEmpty?'':`toggleOppCard('${k}')`}">
+        <div class="opp-count">${list.length}</div>
+        <div class="opp-label">${def.label}</div>
+      </div>
+    `;
+  }).join('');
+  const firstNonEmpty = OPP_GRID_KEYS.find(k => State.oppCategories[k].length > 0);
+  if(firstNonEmpty) toggleOppCard(firstNonEmpty);
+  else $('oppDetail').innerHTML = '<div class="opp-detail-empty">Tidak ada peluang bisnis yang terdeteksi dari data saat ini.</div>';
+}
+// Kartu peluang bisa dipilih lebih dari satu (multi-select). 1 kartu aktif
+// = tampilan detail seperti biasa (dengan filter/sort/search). 2-3 kartu
+// aktif sekaligus = tampilkan irisan nasabah/prospek yang memenuhi SEMUA
+// kategori terpilih (mis. CASA Optimal + Merchant, atau ketiganya sekaligus).
+function toggleOppCard(k){
+  if(!State.activeOpps) State.activeOpps = new Set();
+  if(State.activeOpps.has(k)) State.activeOpps.delete(k); else State.activeOpps.add(k);
+  document.querySelectorAll('#oppGrid .opp-card').forEach(el => el.classList.toggle('active', State.activeOpps.has(el.dataset.opp)));
+  const keys = OPP_GRID_KEYS.filter(kk => State.activeOpps.has(kk));
+  if(keys.length === 0){
+    $('oppPinjamanFilterWrap').style.display = 'none';
+    $('oppKolFilter').style.display = 'none';
+    $('oppDetail').innerHTML = '<div class="opp-detail-empty">Pilih kategori peluang di atas untuk menampilkan daftar nasabah.</div>';
+    return;
+  }
+  if(keys.length === 1) selectOpp(keys[0], true);
+  else { $('oppPinjamanFilterWrap').style.display = 'none'; $('oppKolFilter').style.display = 'none'; renderOppIntersection(keys); }
+}
+window.toggleOppCard = toggleOppCard;
+function reRenderOppSelection(resetPage){
+  const keys = OPP_GRID_KEYS.filter(k => State.activeOpps && State.activeOpps.has(k));
+  if(keys.length === 1) selectOpp(keys[0], resetPage);
+  else if(keys.length > 1) renderOppIntersection(keys);
+}
+function renderOppIntersection(keys){
+  const lists = keys.map(k => State.oppCategories[k]);
+  const cifSets = lists.map(list => new Set(list.map(e => e.cif)));
+  let commonCifs = [...cifSets[0]];
+  for(let i=1;i<cifSets.length;i++) commonCifs = commonCifs.filter(cif => cifSets[i].has(cif));
+  const q = ($('oppSearch').value || '').toLowerCase().trim();
+  const custByCif = new Map(getOppScopedCustomers().map(c => [c.cif, c]));
+  let items = commonCifs.map(cif => {
+    const c = custByCif.get(cif);
+    const rep = lists[0].find(e => e.cif === cif);
+    return {cif, nama: c ? c.nama : (rep ? rep.nama : cif), c, rep};
+  });
+  if(q) items = items.filter(it => `${it.nama||''} ${it.cif}`.toLowerCase().includes(q));
+  const labels = keys.map(k => OPP_DEFS[k].label).join(' + ');
+  const badges = '';
+  const entries = items.map(it => {
+    if(it.c){
+      const c = it.c;
+      return `
+      <div class="opp-entry">
+        <div class="opp-entry-head">
+          <span><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(c.cif)}')">${escapeHtml(c.nama)}</a></span>
+          <span style="display:flex;gap:6px;align-items:center">${badges}</span>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-field"><span class="lbl">CIF</span><span class="val">${escapeHtml(c.cif)}</span></div>
+          <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(c.uker||'-')}</span></div>
+          <div class="detail-field"><span class="lbl">Baki Debet</span><span class="val">${fmtRupiah(c.totalBakiDebet)}</span></div>
+          <div class="detail-field"><span class="lbl">Total Simpanan</span><span class="val">${fmtRupiah(c.totalFunding)}</span></div>
+        </div>
+        <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(c.cif)}')">Lihat Rekening Koran</button>
+      </div>`;
+    }
+    const p = it.rep || {cif:it.cif, nama:it.nama, ukerCode:'-', saldo:0};
+    return `
+      <div class="opp-entry">
+        <div class="opp-entry-head">
+          <span><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(p.cif)}')">${escapeHtml(p.nama || '(tanpa nama)')}</a></span>
+          <span style="display:flex;gap:6px;align-items:center">${badges}</span>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-field"><span class="lbl">CIF</span><span class="val">${escapeHtml(p.cif)}</span></div>
+          <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(p.ukerCode || '-')}</span></div>
+          <div class="detail-field"><span class="lbl">Total Saldo</span><span class="val">${fmtRupiah(p.saldo||0)}</span></div>
+        </div>
+        <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(p.cif)}')">Lihat Rekening Koran</button>
+      </div>`;
+  }).join('');
+  $('oppDetail').innerHTML = `
+    <div class="rec-note"><strong>Irisan ${escapeHtml(labels)}:</strong> Nasabah/prospek yang memenuhi seluruh kategori terpilih sekaligus.</div>
+    <div class="upload-hint" style="margin-bottom:10px">Menampilkan ${fmtNum(items.length)} nasabah/prospek yang memenuhi ${keys.length} kategori sekaligus.</div>
+    <div class="opp-entry-list">${entries || '<div class="opp-detail-empty">Tidak ada nasabah/prospek yang memenuhi seluruh kategori terpilih.</div>'}</div>
+  `;
+}
+function looksLikeBadanUsaha(nama){
+  return /^(PT|CV|UD|PD|KOPERASI|FIRMA|YAYASAN|KSP|BUMDES)\b/i.test(cleanStr(nama));
+}
+function buildOppInsightNote(c, key){
+  if(c.worstKol >= 3){
+    return `<div class="rec-note" style="border-left-color:var(--danger);background:#fdeceb;color:#8a2f2f;margin-top:8px"><strong>Recovery (Kol ${c.worstKol} - ${KOL_LABEL[c.worstKol]||''}):</strong> Fokus penanganan kredit, bukan cross-sell.</div>`;
+  }
+  if(key === 'quality'){
+    return `<div class="rec-note" style="border-left-color:var(--warning);background:#fdf3dd;color:#7a5a06;margin-top:8px"><strong>Quality (Kol 2):</strong> Pantau komitmen pembayaran sebelum memburuk ke Kol 3+.</div>`;
+  }
+  const ev = c.pipelineEval || {};
+  if(key === 'crossSellMerchant'){
+    const missing = [c.edc.length===0 && 'EDC', c.qris.length===0 && 'QRIS'].filter(Boolean).join(' dan ');
+    return `<div class="rec-note" style="margin-top:8px">${escapeHtml(c.nama)} tervalidasi <strong>Merchant</strong> (CASA ${fmtRupiah(Math.round(ev.avgCasa||0))}/bln, freq ${fmtDec(ev.avgFreq||0)}x/bln) tapi belum punya ${missing}. Akuisisi ${missing} dengan sinyal kuat.</div>`;
+  }
+  return `<div class="rec-note" style="margin-top:8px">${escapeHtml(c.nama)} terdeteksi punya peluang pengembangan produk lain di BRI.</div>`;
+}
+function buildProspectOppNote(p, key){
+  const namaStr = escapeHtml(p.nama || 'Nasabah ini');
+  const produkStr = p.produk.map(x=>escapeHtml(x)).join(', ');
+  const cifNote = p.noCifMatch ? ' Catatan: hanya ditemukan di data Deposito, cocokkan manual sebelum follow-up.' : '';
+  const statusStr = p.everHadLoan ? 'Baki Debet Rp 0 (cek status pelunasan)' : 'belum pernah kredit';
+  const ev = p.pipelineEval || {};
+  const pipelineText = key === 'casaOptimal'
+    ? `CASA Optimal (ratas CASA ${fmtRupiah(Math.round(ev.avgCasa12||0))}, freq ${fmtDec(ev.avgFreq12||0)}x/bln)`
+    : `Trx Optimal (kredit ${fmtRupiah(Math.round(ev.avgCreditMonthly||0))}/bln, CASA ${fmtRupiah(Math.round(ev.avgCasa||0))})`;
+  return `<div class="rec-note" style="margin-top:8px">${namaStr}, ${produkStr}, ${statusStr}, tervalidasi ${pipelineText}, kandidat pipeline kredit untuk RM SME.${cifNote}</div>`;
+}
+const OPP_DISPLAY_CAP = 200;
+const OPP_LOAN_KEYS = ['casaOptimal','trxOptimal'];
+function selectOpp(k, resetPinjamanPage=true){
+  State.activeOpp = k;
+  if(resetPinjamanPage) State.pinjamanOppPageSize = OPP_DISPLAY_CAP;
+  document.querySelectorAll('.opp-card').forEach(el => el.classList.toggle('active', el.dataset.opp === k));
+  const def = OPP_DEFS[k];
+  const q = ($('oppSearch').value || '').toLowerCase().trim();
+  let list = State.oppCategories[k];
+  $('oppPinjamanFilterWrap').style.display = OPP_LOAN_KEYS.includes(k) ? 'flex' : 'none';
+  $('oppKolFilter').style.display = k === 'kolWatch' ? '' : 'none';
+  if(OPP_LOAN_KEYS.includes(k)){
+    if(q) list = list.filter(p => `${p.nama} ${p.cif}`.toLowerCase().includes(q));
+    const jenisFilter = $('oppPinjamanJenisFilter') ? $('oppPinjamanJenisFilter').value : '';
+    if(jenisFilter) list = list.filter(p => p.produk.includes(jenisFilter));
+    const sortMode = $('oppPinjamanSortFilter') ? $('oppPinjamanSortFilter').value : 'tanggal';
+    list = sortMode === 'saldo' ? list.slice().sort((a,b)=>b.saldo-a.saldo) : list.slice();
+    const pageSize = State.pinjamanOppPageSize || OPP_DISPLAY_CAP;
+    const visible = list.slice(0, pageSize);
+    const entries = visible.map(p => {
+      const rows = [['Tabungan',p.tabunganSum],['Giro',p.giroSum],['Deposito',p.depositoSum],['EDC (Volume)',p.edcSum],['QRIS (Volume)',p.qrisSum]]
+        .filter(([,v]) => v>0)
+        .map(([label,v]) => `<div class="detail-field"><span class="lbl">${label}</span><span class="val">${fmtRupiah(v)}</span></div>`).join('');
+      const kolBadge = p.worstKol ? `<span class="badge-pill k-${p.worstKol}">Kol ${p.worstKol}</span>` : '';
+      return `
+      <div class="opp-entry">
+        <div class="opp-entry-head">
+          <span><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(p.cif)}')">${escapeHtml(p.nama || '(tanpa nama)')}</a></span>
+          <span style="display:flex;gap:6px;align-items:center">${kolBadge}<span class="badge-pill prod-yes" style="font-weight:800">${p.produk.map(x=>escapeHtml(x)).join(', ')}</span></span>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-field"><span class="lbl">CIF</span><span class="val">${escapeHtml(p.cif)}</span></div>
+          <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(p.ukerCode || '-')}</span></div>
+          <div class="detail-field"><span class="lbl">Total Saldo</span><span class="val">${fmtRupiah(p.saldo)}</span></div>
+          ${rows}
+          <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((p.rmFt && p.rmFt.length) ? p.rmFt.join(', ') : '-')}</span></div>
+        </div>
+        <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(p.cif)}')">Lihat Rekening Koran</button>
+        ${buildProspectOppNote(p, k)}
+      </div>
+    `;
+    }).join('');
+    const loadMore = list.length > pageSize
+      ? `<div style="text-align:center;padding:14px"><button class="btn btn-outline btn-sm" onclick="growPinjamanOppPage()">Muat ${OPP_DISPLAY_CAP} Lagi</button></div>` : '';
+    $('oppDetail').innerHTML = `
+      <div class="rec-note"><strong>${def.label}:</strong> ${def.rec}</div>
+      <div class="upload-hint" style="margin-bottom:10px">Menampilkan ${fmtNum(visible.length)} dari total ${fmtNum(list.length)} nasabah.</div>
+      <div class="opp-entry-list">${entries || '<div class="opp-detail-empty">Tidak ada nasabah yang cocok.</div>'}</div>
+      ${loadMore}
+    `;
+    return;
+  }
+  if(q) list = list.filter(c => `${c.nama} ${c.cif}`.toLowerCase().includes(q));
+  if(k === 'kolWatch'){
+    const kolFilter = $('oppKolFilter').value;
+    if(kolFilter) list = list.filter(c => String(c.worstKol) === kolFilter);
+  }
+  const entries = list.slice().sort((a,b)=>b.totalBakiDebet-a.totalBakiDebet).map(c => `
+    <div class="opp-entry">
+      <div class="opp-entry-head">
+        <span><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(c.cif)}')">${escapeHtml(c.nama)}</a></span>
+        <span class="badge-pill k-${c.worstKol}">Kol ${c.worstKol}</span>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field"><span class="lbl">CIF</span><span class="val">${escapeHtml(c.cif)}</span></div>
+        <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(c.uker)}</span></div>
+        <div class="detail-field"><span class="lbl">Baki Debet</span><span class="val">${fmtRupiah(c.totalBakiDebet)}</span></div>
+        <div class="detail-field"><span class="lbl">Total Funding</span><span class="val">${fmtRupiah(c.totalFunding)}</span></div>
+        <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((c.rmFundingList && c.rmFundingList.length) ? c.rmFundingList.join(', ') : '-')}</span></div>
+        <div class="detail-field"><span class="lbl">RM Pengelola Pinjaman</span><span class="val">${escapeHtml(cleanPn(c.loans[0]?.pnPengelola))}</span></div>
+      </div>
+      <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(c.cif)}')">Lihat Rekening Koran</button>
+      ${buildOppInsightNote(c, k)}
+    </div>
+  `).join('');
+  $('oppDetail').innerHTML = `
+    <div class="rec-note"><strong>${def.label}:</strong> ${def.rec}</div>
+    <div class="opp-entry-list">${entries || '<div class="opp-detail-empty">Tidak ada nasabah yang cocok.</div>'}</div>
+  `;
+}
+window.selectOpp = selectOpp;
+function growPinjamanOppPage(){
+  State.pinjamanOppPageSize = (State.pinjamanOppPageSize||OPP_DISPLAY_CAP) + OPP_DISPLAY_CAP;
+  selectOpp(State.activeOpp, false);
+}
+window.growPinjamanOppPage = growPinjamanOppPage;
+$('oppSearch').addEventListener('input', () => reRenderOppSelection(true));
+$('oppPinjamanJenisFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.includes(State.activeOpp)) reRenderOppSelection(true); });
+$('oppPinjamanSortFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.includes(State.activeOpp)) reRenderOppSelection(false); });
+$('oppKolFilter').addEventListener('change', () => { if(State.activeOpp==='kolWatch') selectOpp('kolWatch', true); });
+/* ===================================================================
+   PRIORITAS KUNJUNGAN — CASA to Loan
+   ================================================================= */
+const QUAD_DEFS = {
+  needsVisit: {label:'Perlu Kunjungan', color:'#d64545', badgeCls:'k-5', sub:''},
+  sehat:      {label:'CASA Memadai',    color:'#0a9d6e', badgeCls:'k-1', sub:''},
+};
+const QUAD_COLOR = {needsVisit:'#d64545', sehat:'#0a9d6e'};
+function percentile(sortedArr, p){
+  if(!sortedArr.length) return 0;
+  const idx = (p/100) * (sortedArr.length-1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if(lo === hi) return sortedArr[lo];
+  return sortedArr[lo] + (sortedArr[hi]-sortedArr[lo]) * (idx-lo);
+}
+// Satu baris per FASILITAS pinjaman aktif (baki debet > 0), bukan per
+// nasabah — nasabah dengan >1 kredit aktif akan muncul 2 baris (atau lebih),
+// masing-masing dengan No Rekening & OS fasilitas itu sendiri. CASA to Loan
+// tetap dihitung di level nasabah (total CASA nasabah / total baki debet
+// gabungan semua fasilitasnya) dan ditampilkan sama untuk tiap baris nasabah
+// yang sama, karena rasio ini melekat pada relationship nasabah, bukan per
+// fasilitas.
+// Parser tanggal longgar untuk NEXT_PMT_DATE / TGL JATUH TEMPO — menerima
+// serial Excel (angka), format ISO (YYYY-MM-DD), atau DD/MM/YYYY. Mengembalikan
+// timestamp yang bisa dibandingkan, atau null kalau tidak bisa di-parse.
+function parseLooseDate(v){
+  if(v == null || v === '') return null;
+  if(typeof v === 'number' && isFinite(v)) return Math.round((v - 25569) * 86400000);
+  const s = String(v).trim();
+  if(!s) return null;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]).getTime();
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]).getTime();
+  const t = Date.parse(s);
+  return isNaN(t) ? null : t;
+}
+function computePriorityData(){
+  State.customers.forEach(c => { c.priorityQuad = null; });
+  const custs = getScopedCustomers();
+  const COV_FIXED_THRESHOLD = 0.05;
+  const list = [];
+  custs.forEach(c => {
+    const cov = c.casaToLoan ?? 0;
+    const quad = cov < COV_FIXED_THRESHOLD ? 'needsVisit' : 'sehat';
+    c.priorityQuad = quad;
+    c.loans.filter(l => l._baki > 0).forEach(loan => {
+      list.push({c, loan, cov, quad});
+    });
+  });
+  list.sort((a,b) => {
+    if(a.quad !== b.quad) return a.quad === 'needsVisit' ? -1 : 1;
+    if(a.loan._baki !== b.loan._baki) return a.loan._baki - b.loan._baki; // saldo (OS) terkecil dulu
+    const da = parseLooseDate(a.loan.nextPmtDate), db = parseLooseDate(b.loan.nextPmtDate);
+    if(da == null && db == null) return 0;
+    if(da == null) return 1;
+    if(db == null) return -1;
+    return da - db; // next payment date paling cepat dulu
+  });
+  const quadCounts = {needsVisit:0, sehat:0};
+  list.forEach(r => quadCounts[r.quad]++);
+  State.priority = {list, p25Cov:COV_FIXED_THRESHOLD, quadCounts};
+}
+function renderPriorityQuadGrid(){
+  const {quadCounts} = State.priority;
+  $('priorityQuadGrid').innerHTML = Object.keys(QUAD_DEFS).map(q => {
+    const def = QUAD_DEFS[q];
+    const count = quadCounts[q] || 0;
+    const isEmpty = count === 0;
+    return `
+      <div class="opp-card ${isEmpty?'disabled':''}" data-quad="${q}" onclick="${isEmpty?'':`selectPriorityQuad('${q}')`}" style="border-left:4px solid ${def.color}">
+        <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
+        <div class="opp-count">${count}</div>
+        <div class="opp-sub">${def.sub}</div>
+      </div>
+    `;
+  }).join('');
+}
+function selectPriorityQuad(q){
+  State.activePriorityQuad = (State.activePriorityQuad === q) ? null : q;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.quad === State.activePriorityQuad));
+  renderPriorityTable();
+}
+window.selectPriorityQuad = selectPriorityQuad;
+function renderPriorityTable(){
+  const q = ($('prioritySearch').value || '').toLowerCase().trim();
+  let rows = State.priority.list;
+  if(State.activePriorityQuad) rows = rows.filter(r => r.quad === State.activePriorityQuad);
+  if(q) rows = rows.filter(r => `${r.c.nama} ${r.c.cif} ${r.loan.noRekening}`.toLowerCase().includes(q));
+  const activeQuadLabel = State.activePriorityQuad ? ` · status: ${QUAD_DEFS[State.activePriorityQuad].label}` : '';
+  const searchLabel = q ? ` · pencarian: "${escapeHtml(q)}"` : '';
+  $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeQuadLabel}${searchLabel}`;
+  $('priorityBody').innerHTML = rows.map(r => `
+    <tr>
+      <td><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(r.c.cif)}')"><strong>${escapeHtml(r.c.nama)}</strong></a></td>
+      <td>${escapeHtml(r.loan.noRekening)}</td>
+      <td class="num">${fmtRupiah(r.loan._baki)}</td>
+      <td class="num">${fmtDec(r.cov*100)}%</td>
+      <td><span class="badge-pill ${QUAD_DEFS[r.quad].badgeCls}">${QUAD_DEFS[r.quad].label}</span></td>
+      <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
+      <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
+}
+function renderPriorityTab(){
+  computePriorityData();
+  renderPriorityBasisCard();
+  renderPriorityQuadGrid();
+  State.activePriorityQuad = null;
+  renderPriorityTable();
+  $('badgePriority').textContent = State.priority.quadCounts.needsVisit;
+  renderKpiDplCard(getScopedCustomers());
+}
+function renderPriorityBasisCard(){
+  const p = State.priority;
+  $('priorityBasisContent').innerHTML = `
+    <span class="label-tag">Threshold CASA to Loan</span>
+    <div class="cname" style="font-size:16px">Default: &lt; ${fmtDec(p.p25Cov*100)}%</div>
+    <div class="customer-hero-grid" style="margin-top:10px">
+      <div><div class="f-label">Perlu Kunjungan</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.p25Cov*100)}%</div></div>
+      <div><div class="f-label">CASA Memadai</div><div class="f-value">CASA to Loan ≥ ${fmtDec(p.p25Cov*100)}%</div></div>
+    </div>
+  `;
+}
+$('prioritySearch').addEventListener('input', renderPriorityTable);
+$('btnClearPriorityFilter').addEventListener('click', () => {
+  $('prioritySearch').value = '';
+  State.activePriorityQuad = null;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
+  renderPriorityTable();
+});
+/* ===================================================================
+   CHARTS
+   ================================================================= */
+function renderCharts(){
+  const OVERVIEW_CHART_KEYS = ['topDebet','topSimpanan','coverageDist'];
+  OVERVIEW_CHART_KEYS.forEach(k => { if(State.charts[k]){ try{ State.charts[k].destroy(); }catch(e){} delete State.charts[k]; } });
+  const custs = getScopedCustomers();
+  const barValueLabelPlugin = {
+    id: 'barValueLabelPlugin',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart;
+      chart.data.datasets.forEach((dataset, di) => {
+        const meta = chart.getDatasetMeta(di);
+        meta.data.forEach((bar, i) => {
+          const value = dataset.data[i];
+          ctx.save();
+          ctx.fillStyle = '#0b2540';
+          ctx.font = '700 11px Segoe UI, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(fmtNum(value), bar.x, bar.y - 6);
+          ctx.restore();
+        });
+      });
+    }
+  };
+  const topDebet = custs.slice().sort((a,b)=>b.totalBakiDebet-a.totalBakiDebet).slice(0,10);
+  State.charts.topDebet = new Chart($('chartTopDebet'), {
+    type:'bar',
+    data:{labels:topDebet.map(c=>c.nama.length>22?c.nama.slice(0,20)+'…':c.nama), datasets:[{label:'Baki Debet', data:topDebet.map(c=>c.totalBakiDebet), backgroundColor:'#0856c3', borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>'Rp '+c.parsed.x.toLocaleString('id-ID')}}}, scales:{x:{ticks:{callback:v=>'Rp '+(v/1e6).toFixed(0)+'jt'}}}}
+  });
+  const topSimpanan = custs.slice().sort((a,b)=>b.totalFunding-a.totalFunding).slice(0,10);
+  State.charts.topSimpanan = new Chart($('chartTopSimpanan'), {
+    type:'bar',
+    data:{labels:topSimpanan.map(c=>c.nama.length>22?c.nama.slice(0,20)+'…':c.nama), datasets:[{label:'Total Simpanan', data:topSimpanan.map(c=>c.totalFunding), backgroundColor:'#2e78d6', borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>'Rp '+c.parsed.x.toLocaleString('id-ID')}}}, scales:{x:{ticks:{callback:v=>'Rp '+(v/1e6).toFixed(0)+'jt'}}}}
+  });
+  const covBuckets = {'0%':0, '>0–5%':0, '>5–10%':0, '>10–25%':0, '>25–50%':0, '>50%':0};
+  custs.filter(c => c.casaToLoan != null).forEach(c => {
+    const cov = c.casaToLoan * 100;
+    if(cov <= 0) covBuckets['0%']++;
+    else if(cov <= 5) covBuckets['>0–5%']++;
+    else if(cov <= 10) covBuckets['>5–10%']++;
+    else if(cov <= 25) covBuckets['>10–25%']++;
+    else if(cov <= 50) covBuckets['>25–50%']++;
+    else covBuckets['>50%']++;
+  });
+  State.charts.coverageDist = new Chart($('chartCoverageDist'), {
+    type:'bar',
+    data:{labels:Object.keys(covBuckets), datasets:[{label:'Jumlah Nasabah', data:Object.values(covBuckets), backgroundColor:['#d64545','#e0824a','#e07b1f','#d69a12','#2e78d6','#0a9d6e'], borderRadius:4}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, display:false}}},
+    plugins:[barValueLabelPlugin]
+  });
+}
+function renderRmPairingTable(){
+  const custs = getScopedCustomers();
+  const pairs = new Map();
+  custs.forEach(c => {
+    const rmSme = c.rmPengelola;
+    if(!rmSme || rmSme === '-') return;
+    if(!pairs.has(rmSme)) pairs.set(rmSme, {rmFt: findPairedRmFt(rmSme) || '-', count: 0, os: 0});
+    const entry = pairs.get(rmSme);
+    entry.count++;
+    entry.os += c.totalBakiDebet || 0;
+  });
+  const rows = [...pairs.entries()]
+    .map(([rmSme, v]) => ({rmSme, ...v}))
+    .sort((a,b) => b.os - a.os)
+    .slice(0, 10);
+  $('rmPairingBody').innerHTML = rows.length ? rows.map((r,i) => `
+    <tr>
+      <td class="num">${i+1}</td>
+      <td>${escapeHtml(r.rmSme)}</td>
+      <td>${escapeHtml(r.rmFt)}</td>
+      <td class="num">${fmtNum(r.count)}</td>
+      <td class="num">${fmtRupiah(r.os)}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="5" class="empty">Tidak ada data RM pairing pada scope filter saat ini.</td></tr>';
+}
+/* ===================================================================
+   EXPORT TO EXCEL
+   ================================================================= */
+function exportToExcel(){
+  try{
+    showToast('Menyiapkan file Excel...', 'info');
+    const wb = XLSX.utils.book_new();
+    const custs = Array.isArray(State.filteredCust) ? State.filteredCust : getScopedCustomers();
+    const summaryRows = custs.map(c => [
+      c.nama, c.cif, c.uker, c.worstKol, c.loans.length, c.totalPlafon, c.totalBakiDebet, c.totalTunggakan,
+      c.tabungan.length, c.totalTabungan, c.giro.length, c.totalGiro, c.deposito.length, c.totalDeposito,
+      c.totalFunding, c.edc.length+c.qris.length, c.totalMerchantVolume,
+      c.casaToLoan!=null ? +(c.casaToLoan*100).toFixed(2) : '',
+      c.totalBakiDebet>0 ? +((c.totalFunding/c.totalBakiDebet)*100).toFixed(2) : '',
+      c.casaMemenuhi ? 'Ya' : 'Tidak', c.trxAktif ? 'Ya' : 'Tidak',
+      c.oppCount, c.opportunities.map(k=>OPP_DEFS[k].label).join('; ')
+    ]);
+    const summaryHeader = ['Nama Nasabah','CIF','Unit Kerja','Kol Terburuk','Jml Fasilitas','Total Plafon','Total Baki Debet','Total Tunggakan',
+      'Jml Tabungan','Saldo Tabungan','Jml Giro','Saldo Giro','Jml Deposito','Nominal Deposito','Total Funding','Jml Merchant','Volume Merchant',
+      'CASA to Loan (%)','DPK to Loan (%)','CASA Memenuhi','Transaksi Aktif','Jml Peluang','Detail Peluang'];
+    const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryRows]);
+    wsSummary['!cols'] = summaryHeader.map(h=>({wch:Math.max(14,h.length+2)}));
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Profil Nasabah');
+    computePriorityData();
+    const priorityRows = (State.priority?.list || []).map(r => [
+      r.c.nama, r.c.cif, r.loan.noRekening, r.c.uker, r.loan._baki, +(r.cov*100).toFixed(2), QUAD_DEFS[r.quad].label,
+      cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')
+    ]);
+    const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)','Status','RM Pengelola Pinjaman','RM Pengelola Simpanan'];
+    const wsPriority = XLSX.utils.aoa_to_sheet([priorityHeader, ...priorityRows]);
+    wsPriority['!cols'] = priorityHeader.map(h=>({wch:Math.max(14,h.length+2)}));
+    XLSX.utils.book_append_sheet(wb, wsPriority, 'Prioritas Pengelolaan');
+    const sanitizeSheetName = name => name.replace(/[:\\\/?*\[\]]/g, '-').slice(0, 31);
+    OPP_GRID_KEYS.forEach(k => {
+      const list = State.oppCategories[k] || [];
+      const isLoanShape = OPP_LOAN_KEYS.includes(k);
+      const rows = isLoanShape
+        ? list.map(p => [p.nama, p.cif, p.produk.join(', '), p.saldo, p.openDt, p.ukerCode, p.everHadLoan ? 'Kredit lunas/tidak aktif' : 'Belum pernah kredit'])
+        : list.map(c => [c.nama, c.cif, c.uker, c.worstKol, c.totalBakiDebet, c.totalFunding, cleanPn(c.loans[0]?.pnPengelola)]);
+      const header = isLoanShape
+        ? ['Nama','CIF','Fasilitas Dimiliki','Saldo/Funding','Tanggal Buka','Kode Unit Kerja','Status Kredit']
+        : ['Nama','CIF','Unit Kerja','Kol','Baki Debet','Total Funding','RM Pengelola Pinjaman'];
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(OPP_DEFS[k].label));
+    });
+    const pad2 = n => String(n).padStart(2,'0');
+    // Nama file pakai tanggal dari field "Tanggal Data" di filter (tanggal
+    // narik data), bukan tanggal sistem saat ini — fallback ke tanggal
+    // sistem kalau field-nya kosong/tidak valid.
+    const asOfRaw = ($('gfAsOfDate') && $('gfAsOfDate').value || '').trim();
+    const asOfMatch = asOfRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    let stamp;
+    if(asOfMatch){
+      stamp = `${pad2(+asOfMatch[1])}-${pad2(+asOfMatch[2])}-${asOfMatch[3].slice(2)}`;
+    } else {
+      const now = new Date();
+      stamp = `${pad2(now.getDate())}-${pad2(now.getMonth()+1)}-${String(now.getFullYear()).slice(2)}`;
+    }
+    const filename = `Keterkaitan Pinjaman-Simpanan_${stamp}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    showToast('File Excel berhasil diunduh!', 'success');
+  } catch(e){
+    console.error(e);
+    showToast('Gagal mengekspor Excel: ' + e.message, 'error');
+  }
+}
+/* ===================================================================
+   MAIN PROCESS
+   ================================================================= */
+async function processAll(){
+  $('progressCard').classList.add('show');
+  const setP = (pct, detail) => { $('progressFill').style.width=pct+'%'; $('progressPercent').textContent=Math.round(pct)+'%'; if(detail) $('progressDetail').textContent=detail; };
+  try{
+    setP(10, 'Menyusun basis nasabah dari LW321...');
+    await new Promise(r=>setTimeout(r,80));
+    buildCustomers();
+    setP(55, `Ditemukan ${State.customers.size} nasabah existing. Menyusun peluang bisnis...`);
+    await new Promise(r=>setTimeout(r,80));
+    computeOppCategories();
+    setP(75, 'Menyusun visualisasi...');
+    await new Promise(r=>setTimeout(r,80));
+    populateGlobalFilterOptions();
+    applyGlobalFilter();
+    setP(100, 'Selesai!');
+    await new Promise(r=>setTimeout(r,200));
+    $('progressCard').classList.remove('show');
+    $('uploadSection').style.display = 'none';
+    $('dashboard').classList.add('show');
+    $('headerActions').style.display = 'flex';
+    showToast(`Dashboard siap, ${State.customers.size} nasabah, ${State.raw['LW321'].length} fasilitas kredit.`, 'success');
+  } catch(e){
+    console.error(e);
+    $('progressCard').classList.remove('show');
+    showToast('Terjadi kesalahan: ' + e.message, 'error');
+  }
+}
+/* ===================================================================
+   EVENTS
+   ================================================================= */
+renderSlots();
+setupGlobalDrop();
+$('btnProcess').addEventListener('click', processAll);
+$('btnExportExcel').addEventListener('click', exportToExcel);
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    $('panel-'+t.dataset.panel).classList.add('active');
+    $('gfHint').style.display = t.dataset.panel === 'opportunity' ? 'none' : '';
+    if(t.dataset.panel === 'overview'){
+      setTimeout(() => Object.values(State.charts).forEach(c => { try{ c.resize(); }catch(e){} }), 0);
+    }
+  });
+});
+['custSearch','custFilterKol','custFilterProduk','custFilterKondisi'].forEach(id => {
+  $(id).addEventListener('input', applyCustFilters);
+  $(id).addEventListener('change', applyCustFilters);
+});
+$('btnClearCustFilter').addEventListener('click', () => {
+  $('custSearch').value=''; $('custFilterKol').value=''; $('custFilterProduk').value='';
+  $('custFilterKondisi').value='';
+  applyCustFilters();
+});
+$('gfKanwil').addEventListener('change', () => { refreshKancaOptions(); applyGlobalFilter(); });
+$('gfKanca').addEventListener('change', () => { refreshUkerOptions(); applyGlobalFilter(); });
+$('gfUker').addEventListener('change', () => { refreshRmOptions(); applyGlobalFilter(); });
+$('gfRm').addEventListener('change', applyGlobalFilter);
+$('gfRmFt').addEventListener('change', applyGlobalFilter);
+$('btnClearGlobalFilter').addEventListener('click', () => {
+  $('gfKanwil').value=''; refreshKancaOptions(); $('gfKanca').value=''; refreshUkerOptions(); $('gfUker').value=''; refreshRmOptions(); $('gfRm').value=''; $('gfRmFt').value='';
+  applyGlobalFilter();
+});
+$('rkModalClose').addEventListener('click', closeRekeningKoranModal);
+$('rkModalOverlay').addEventListener('click', e => { if(e.target === $('rkModalOverlay')) closeRekeningKoranModal(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeRekeningKoranModal(); });
+document.addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if(!th || !$('custTable').contains(th)) return;
+  const key = th.dataset.sort;
+  if(State.sortKey===key) State.sortDir=-State.sortDir; else { State.sortKey=key; State.sortDir=1; }
+  document.querySelectorAll('#custTable th.sortable').forEach(x=>x.classList.remove('sort-asc','sort-desc'));
+  th.classList.add(State.sortDir>0?'sort-asc':'sort-desc');
+  applyCustFilters();
+});
+window.addEventListener('scroll', () => {
+  $('btnBackToTop').classList.toggle('show', window.scrollY > 400);
+});
+$('btnBackToTop').addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
+</script>
+</body>
+</html>
