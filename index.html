@@ -701,7 +701,7 @@ table.data-table td.empty{text-align:center}
           <div class="table-wrap">
             <table class="data-table" id="priorityTable">
               <thead><tr>
-                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th class="ctr">Kecukupan CASA</th><th class="ctr">Aktivitas Transaksi</th><th class="ctr">NPD Bulan Berjalan</th><th class="ctr">DSRA Memadai</th><th>Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
+                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th class="ctr">Aktivitas Transaksi</th><th class="ctr">NPD Bulan Berjalan</th><th class="ctr">DSRA Memadai</th><th>Status / Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
               </tr></thead>
               <tbody id="priorityBody"></tbody>
             </table>
@@ -874,6 +874,9 @@ const combinePn = (a, b) => {
   return pa + ' - ' + pb;
 };
 const normHeader = h => cleanStr(h).toUpperCase();
+// Sort abjad (case-insensitive, angka di dalam nama/kode diurutkan
+// numerik) — dipakai utk dropdown filter RM Pengelola biar urutannya jelas.
+const sortAbjad = (a, b) => String(a).localeCompare(String(b), 'id', {numeric:true, sensitivity:'base'});
 const escapeHtml = s => { if(s==null) return ''; return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); };
 const showToast = (msg, type='info') => {
   const t = document.createElement('div');
@@ -1788,7 +1791,7 @@ function refreshRmOptions(){
   const all = [...State.customers.values()].filter(c =>
     (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca) && (!uker || c.uker===uker));
   const rmSet = new Set(all.map(c=>c.rmPengelola).filter(v => v && v !== '-'));
-  $('gfRmList').innerHTML = [...rmSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  $('gfRmList').innerHTML = [...rmSet].sort(sortAbjad).map(v=>`<option value="${escapeHtml(v)}">`).join('');
   refreshRmFtOptions();
 }
 function refreshRmFtOptions(){
@@ -1796,7 +1799,7 @@ function refreshRmFtOptions(){
   const all = [...State.customers.values()].filter(c =>
     (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca) && (!uker || c.uker===uker));
   const rmFtSet = new Set(all.flatMap(c => c.rmFundingList));
-  $('gfRmFtList').innerHTML = [...rmFtSet].sort().map(v=>`<option value="${escapeHtml(v)}">`).join('');
+  $('gfRmFtList').innerHTML = [...rmFtSet].sort(sortAbjad).map(v=>`<option value="${escapeHtml(v)}">`).join('');
 }
 function applyGlobalFilter(){
   State.globalFilter = {kanwil:$('gfKanwil').value, kanca:$('gfKanca').value, uker:$('gfUker').value, rm:$('gfRm').value, rmFt:$('gfRmFt').value};
@@ -2533,28 +2536,32 @@ $('oppPinjamanJenisFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.
 $('oppPinjamanSortFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.includes(State.activeOpp)) reRenderOppSelection(false); });
 $('oppKolFilter').addEventListener('change', () => { if(State.activeOpp==='kolWatch') selectOpp('kolWatch', true); });
 /* ===================================================================
-   PRIORITAS PENGELOLAAN — matriks 4 kondisi:
-   Kecukupan CASA (casaToLoan >=5%), Aktivitas Transaksi (freq bulan
-   terakhir >=30x), NPD Bulan Berjalan (ada tagihan jatuh tempo bulan ini),
-   DSRA Memadai (Total Saldo DSRA >= Kewajiban Saldo DSRA, atau tidak ada
-   tunggakan kalau fasilitas memang tidak wajib DSRA) -> P1 (tertinggi) s.d.
-   P4 (terendah).
+   PRIORITAS PENGELOLAAN — CASA to Loan tetap jadi parameter utama (gerbang
+   utama Perlu Kunjungan vs CASA Memadai, seperti sebelumnya). Sub-urutan
+   P1/P2/P3 dari kombinasi Aktivitas Transaksi, NPD Bulan Berjalan & DSRA
+   Memadai HANYA dipakai untuk fasilitas yang CASA to Loan-nya < 5% (Perlu
+   Kunjungan) — fasilitas yang CASA-nya sudah memadai (≥5%) tidak diurutkan
+   pakai matriks ini, cukup masuk kelompok CASA Memadai.
    ================================================================= */
+const QUAD_DEFS = {
+  needsVisit: {label:'Perlu Kunjungan', color:'#d64545', badgeCls:'k-5', sub:''},
+  sehat:      {label:'CASA Memadai',    color:'#0a9d6e', badgeCls:'k-1', sub:''},
+};
 const PRIORITY_DEFS = {
   p1: {label:'P1', desc:'Prioritas tertinggi', color:'#d64545', badgeCls:'k-5'},
   p2: {label:'P2', desc:'Prioritas tinggi',    color:'#c2571c', badgeCls:'k-4'},
   p3: {label:'P3', desc:'Prioritas sedang',    color:'#b45f11', badgeCls:'k-3'},
-  p4: {label:'P4', desc:'Prioritas rendah',    color:'#0a9d6e', badgeCls:'k-1'},
 };
-// Kunci = `${casaMemadai}${aktivitasAktif}${npdBulanIni}${dsraMemadai}`
-// (1=Ya, 0=Tidak) -> P1..P4, 16 kombinasi lengkap sesuai matriks yang
-// ditentukan. Kombinasi 0000 (semua kondisi buruk kecuali NPD) diputuskan
-// masuk P2, bukan P1, karena tidak ada tagihan jatuh tempo bulan ini.
-const PRIORITY_MATRIX = {
-  '0010':'p1', '0011':'p1', '0110':'p1',
-  '0111':'p2', '0000':'p2', '0001':'p2', '0100':'p2', '1010':'p2',
-  '0101':'p3', '1011':'p3', '1000':'p3', '1110':'p3',
-  '1001':'p4', '1111':'p4', '1100':'p4', '1101':'p4',
+// Kunci = `${aktivitasAktif}${npdBulanIni}${dsraMemadai}` (1=Ya, 0=Tidak) ->
+// P1..P3. Ini persis subset "CASA to Loan = Tidak memadai" dari matriks 16
+// kombinasi yang sudah disepakati sebelumnya (baris CASA=Ya dibuang karena
+// tidak lagi dipakai — fasilitas dgn CASA memadai tidak masuk sub-urutan
+// ini). Kombinasi 000 (semua kondisi lain juga buruk) diputuskan masuk P2,
+// bukan P1, karena tidak ada tagihan jatuh tempo bulan ini.
+const PRIORITY_MATRIX_LOW_CASA = {
+  '010':'p1', '011':'p1', '110':'p1',
+  '111':'p2', '000':'p2', '001':'p2', '100':'p2',
+  '101':'p3',
 };
 function percentile(sortedArr, p){
   if(!sortedArr.length) return 0;
@@ -2610,13 +2617,16 @@ function buildDsraLookup(){
   return map;
 }
 function computePriorityData(){
+  State.customers.forEach(c => { c.priorityQuad = null; });
   const custs = getScopedCustomers();
   const dsraMap = buildDsraLookup();
   const {year:asOfYear, month:asOfMonth} = getAsOfYearMonth();
+  const COV_FIXED_THRESHOLD = 0.05;
   const list = [];
   custs.forEach(c => {
     const cov = c.casaToLoan ?? 0;
-    const casaMemadai = !!c.casaMemenuhi;
+    const quad = cov < COV_FIXED_THRESHOLD ? 'needsVisit' : 'sehat';
+    c.priorityQuad = quad;
     // Aktivitas Transaksi: pakai frekuensi mutasi kredit bulan TERAKHIR di
     // rekening koran (snapshot bulan berjalan), bukan rata-rata 12 bulan.
     const rk = c.rekeningKoran || [];
@@ -2639,13 +2649,20 @@ function computePriorityData(){
         // yang perlu ditutup).
         dsraMemadai = (loan._tunggakan||0) <= 0;
       }
-      const key = (casaMemadai?'1':'0') + (aktivitasAktif?'1':'0') + (npdBulanIni?'1':'0') + (dsraMemadai?'1':'0');
-      const priority = PRIORITY_MATRIX[key] || 'p4';
-      list.push({c, loan, cov, casaMemadai, aktivitasAktif, npdBulanIni, dsraMemadai, priority});
+      // Sub-urutan P1/P2/P3 HANYA dihitung utk quad 'needsVisit' (CASA to
+      // Loan < 5%) — CASA to Loan tetap parameter utama/gerbang. Fasilitas
+      // yg CASA-nya sudah memadai tidak diberi P (priority: null).
+      let priority = null;
+      if(quad === 'needsVisit'){
+        const key = (aktivitasAktif?'1':'0') + (npdBulanIni?'1':'0') + (dsraMemadai?'1':'0');
+        priority = PRIORITY_MATRIX_LOW_CASA[key] || 'p3';
+      }
+      list.push({c, loan, cov, quad, aktivitasAktif, npdBulanIni, dsraMemadai, priority});
     });
   });
   list.sort((a,b) => {
-    if(a.priority !== b.priority) return a.priority.localeCompare(b.priority); // p1 < p2 < p3 < p4
+    if(a.quad !== b.quad) return a.quad === 'needsVisit' ? -1 : 1;
+    if(a.quad === 'needsVisit' && a.priority !== b.priority) return a.priority.localeCompare(b.priority); // p1 < p2 < p3
     if(a.loan._baki !== b.loan._baki) return a.loan._baki - b.loan._baki; // saldo (OS) terkecil dulu
     const da = parseLooseDate(a.loan.nextPmtDate), db = parseLooseDate(b.loan.nextPmtDate);
     if(da == null && db == null) return 0;
@@ -2653,28 +2670,32 @@ function computePriorityData(){
     if(db == null) return -1;
     return da - db; // next payment date paling cepat dulu
   });
-  const priorityCounts = {p1:0, p2:0, p3:0, p4:0};
-  list.forEach(r => priorityCounts[r.priority]++);
-  State.priority = {list, priorityCounts, asOfYear, asOfMonth};
+  const quadCounts = {needsVisit:0, sehat:0};
+  const priorityCounts = {p1:0, p2:0, p3:0};
+  list.forEach(r => { quadCounts[r.quad]++; if(r.priority) priorityCounts[r.priority]++; });
+  State.priority = {list, p25Cov:COV_FIXED_THRESHOLD, quadCounts, priorityCounts, asOfYear, asOfMonth};
 }
 function renderPriorityQuadGrid(){
-  const {priorityCounts} = State.priority;
-  $('priorityQuadGrid').innerHTML = Object.keys(PRIORITY_DEFS).map(k => {
-    const def = PRIORITY_DEFS[k];
-    const count = priorityCounts[k] || 0;
+  const {quadCounts, priorityCounts} = State.priority;
+  $('priorityQuadGrid').innerHTML = Object.keys(QUAD_DEFS).map(q => {
+    const def = QUAD_DEFS[q];
+    const count = quadCounts[q] || 0;
     const isEmpty = count === 0;
+    const subBreakdown = q === 'needsVisit'
+      ? `P1: ${priorityCounts.p1||0} · P2: ${priorityCounts.p2||0} · P3: ${priorityCounts.p3||0}`
+      : def.sub;
     return `
-      <div class="opp-card ${isEmpty?'disabled':''}" data-priority="${k}" onclick="${isEmpty?'':`selectPriorityQuad('${k}')`}" style="border-left:4px solid ${def.color}">
+      <div class="opp-card ${isEmpty?'disabled':''}" data-quad="${q}" onclick="${isEmpty?'':`selectPriorityQuad('${q}')`}" style="border-left:4px solid ${def.color}">
         <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
         <div class="opp-count">${count}</div>
-        <div class="opp-sub">${escapeHtml(def.desc)}</div>
+        <div class="opp-sub">${escapeHtml(subBreakdown)}</div>
       </div>
     `;
   }).join('');
 }
-function selectPriorityQuad(k){
-  State.activePriorityQuad = (State.activePriorityQuad === k) ? null : k;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.priority === State.activePriorityQuad));
+function selectPriorityQuad(q){
+  State.activePriorityQuad = (State.activePriorityQuad === q) ? null : q;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.quad === State.activePriorityQuad));
   renderPriorityTable();
 }
 window.selectPriorityQuad = selectPriorityQuad;
@@ -2682,26 +2703,28 @@ function yaTidak(b){ return b ? 'Ya' : 'Tidak'; }
 function renderPriorityTable(){
   const q = ($('prioritySearch').value || '').toLowerCase().trim();
   let rows = State.priority.list;
-  if(State.activePriorityQuad) rows = rows.filter(r => r.priority === State.activePriorityQuad);
+  if(State.activePriorityQuad) rows = rows.filter(r => r.quad === State.activePriorityQuad);
   if(q) rows = rows.filter(r => `${r.c.nama} ${r.c.cif} ${r.loan.noRekening}`.toLowerCase().includes(q));
-  const activeLabel = State.activePriorityQuad ? ` · status: ${PRIORITY_DEFS[State.activePriorityQuad].label}` : '';
+  const activeQuadLabel = State.activePriorityQuad ? ` · status: ${QUAD_DEFS[State.activePriorityQuad].label}` : '';
   const searchLabel = q ? ` · pencarian: "${escapeHtml(q)}"` : '';
-  $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeLabel}${searchLabel}`;
+  $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeQuadLabel}${searchLabel}`;
   $('priorityBody').innerHTML = rows.map(r => `
     <tr>
       <td><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(r.c.cif)}')"><strong>${escapeHtml(r.c.nama)}</strong></a></td>
       <td>${escapeHtml(r.loan.noRekening)}</td>
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
       <td class="num">${fmtDec(r.cov*100)}%</td>
-      <td class="ctr">${yaTidak(r.casaMemadai)}</td>
-      <td class="ctr">${yaTidak(r.aktivitasAktif)}</td>
-      <td class="ctr">${yaTidak(r.npdBulanIni)}</td>
-      <td class="ctr">${yaTidak(r.dsraMemadai)}</td>
-      <td><span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}">${PRIORITY_DEFS[r.priority].label}</span></td>
+      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.aktivitasAktif) : '-'}</td>
+      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.npdBulanIni) : '-'}</td>
+      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.dsraMemadai) : '-'}</td>
+      <td>
+        <span class="badge-pill ${QUAD_DEFS[r.quad].badgeCls}">${QUAD_DEFS[r.quad].label}</span>
+        ${r.priority ? `<span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}" style="margin-left:4px">${PRIORITY_DEFS[r.priority].label}</span>` : ''}
+      </td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
       <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
     </tr>
-  `).join('') || '<tr><td colspan="11" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
+  `).join('') || '<tr><td colspan="10" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
 }
 function renderPriorityTab(){
   computePriorityData();
@@ -2709,16 +2732,21 @@ function renderPriorityTab(){
   renderPriorityQuadGrid();
   State.activePriorityQuad = null;
   renderPriorityTable();
-  $('badgePriority').textContent = State.priority.priorityCounts.p1;
+  $('badgePriority').textContent = State.priority.quadCounts.needsVisit;
   renderKpiDplCard(getScopedCustomers());
 }
 function renderPriorityBasisCard(){
   const p = State.priority;
   const pad2 = n => String(n).padStart(2,'0');
   $('priorityBasisContent').innerHTML = `
-    <span class="label-tag">Matriks Prioritas Pengelolaan · bulan berjalan ${pad2(p.asOfMonth)}/${p.asOfYear}</span>
-    <div class="cname" style="font-size:14px;font-weight:400;margin-top:6px;line-height:1.5">
-      Kombinasi <strong>Kecukupan CASA</strong> (CASA to Loan ≥5%), <strong>Aktivitas Transaksi</strong> (mutasi kredit bulan terakhir ≥30x), <strong>NPD Bulan Berjalan</strong> (ada tagihan jatuh tempo bulan ini), dan <strong>DSRA Memadai</strong> (Total Saldo DSRA ≥ Kewajiban Saldo DSRA; kalau fasilitas tidak wajib DSRA, dianggap memadai selama tidak ada tunggakan) menentukan <strong>P1</strong> (prioritas tertinggi) s.d. <strong>P4</strong> (terendah) untuk tiap fasilitas.
+    <span class="label-tag">Threshold CASA to Loan</span>
+    <div class="cname" style="font-size:16px">Default: &lt; ${fmtDec(p.p25Cov*100)}%</div>
+    <div class="customer-hero-grid" style="margin-top:10px">
+      <div><div class="f-label">Perlu Kunjungan</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.p25Cov*100)}%</div></div>
+      <div><div class="f-label">CASA Memadai</div><div class="f-value">CASA to Loan ≥ ${fmtDec(p.p25Cov*100)}%</div></div>
+    </div>
+    <div class="cname" style="font-size:13px;font-weight:400;margin-top:10px;line-height:1.5">
+      Khusus fasilitas <strong>Perlu Kunjungan</strong>, urutannya disempurnakan pakai sub-prioritas <strong>P1-P3</strong> dari kombinasi <strong>Aktivitas Transaksi</strong> (mutasi kredit bulan terakhir ≥30x, bulan berjalan ${pad2(p.asOfMonth)}/${p.asOfYear}), <strong>NPD Bulan Berjalan</strong> (ada tagihan jatuh tempo bulan ini), dan <strong>DSRA Memadai</strong> (Total Saldo DSRA ≥ Kewajiban Saldo DSRA; kalau fasilitas tidak wajib DSRA, dianggap memadai selama tidak ada tunggakan). Fasilitas CASA Memadai tidak diberi sub-prioritas.
     </div>
   `;
 }
@@ -2834,12 +2862,15 @@ function exportToExcel(){
     computePriorityData();
     const priorityRows = (State.priority?.list || []).map(r => [
       r.c.nama, r.c.cif, r.loan.noRekening, r.c.uker, r.loan._baki, +(r.cov*100).toFixed(2),
-      r.casaMemadai?'Ya':'Tidak', r.aktivitasAktif?'Ya':'Tidak', r.npdBulanIni?'Ya':'Tidak', r.dsraMemadai?'Ya':'Tidak',
-      PRIORITY_DEFS[r.priority].label,
+      QUAD_DEFS[r.quad].label,
+      r.quad==='needsVisit' ? (r.aktivitasAktif?'Ya':'Tidak') : '-',
+      r.quad==='needsVisit' ? (r.npdBulanIni?'Ya':'Tidak') : '-',
+      r.quad==='needsVisit' ? (r.dsraMemadai?'Ya':'Tidak') : '-',
+      r.priority ? PRIORITY_DEFS[r.priority].label : '-',
       cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')
     ]);
     const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)',
-      'Kecukupan CASA','Aktivitas Transaksi','NPD Bulan Berjalan','DSRA Memadai','Prioritas',
+      'Status','Aktivitas Transaksi','NPD Bulan Berjalan','DSRA Memadai','Sub-Prioritas',
       'RM Pengelola Pinjaman','RM Pengelola Simpanan'];
     const wsPriority = XLSX.utils.aoa_to_sheet([priorityHeader, ...priorityRows]);
     wsPriority['!cols'] = priorityHeader.map(h=>({wch:Math.max(14,h.length+2)}));
