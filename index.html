@@ -701,7 +701,7 @@ table.data-table td.empty{text-align:center}
           <div class="table-wrap">
             <table class="data-table" id="priorityTable">
               <thead><tr>
-                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th class="ctr">Aktivitas Transaksi</th><th class="ctr">NPD Bulan Berjalan</th><th class="ctr">DSRA Memadai</th><th>Status / Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
+                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th>Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
               </tr></thead>
               <tbody id="priorityBody"></tbody>
             </table>
@@ -2699,7 +2699,6 @@ function selectPriorityQuad(q){
   renderPriorityTable();
 }
 window.selectPriorityQuad = selectPriorityQuad;
-function yaTidak(b){ return b ? 'Ya' : 'Tidak'; }
 function renderPriorityTable(){
   const q = ($('prioritySearch').value || '').toLowerCase().trim();
   let rows = State.priority.list;
@@ -2714,17 +2713,11 @@ function renderPriorityTable(){
       <td>${escapeHtml(r.loan.noRekening)}</td>
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
       <td class="num">${fmtDec(r.cov*100)}%</td>
-      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.aktivitasAktif) : '-'}</td>
-      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.npdBulanIni) : '-'}</td>
-      <td class="ctr">${r.quad==='needsVisit' ? yaTidak(r.dsraMemadai) : '-'}</td>
-      <td>
-        <span class="badge-pill ${QUAD_DEFS[r.quad].badgeCls}">${QUAD_DEFS[r.quad].label}</span>
-        ${r.priority ? `<span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}" style="margin-left:4px">${PRIORITY_DEFS[r.priority].label}</span>` : ''}
-      </td>
+      <td>${r.priority ? `<span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}">${PRIORITY_DEFS[r.priority].label}</span>` : `<span class="badge-pill ${QUAD_DEFS[r.quad].badgeCls}">${QUAD_DEFS[r.quad].label}</span>`}</td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
       <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
     </tr>
-  `).join('') || '<tr><td colspan="10" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
+  `).join('') || '<tr><td colspan="7" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
 }
 function renderPriorityTab(){
   computePriorityData();
@@ -2737,16 +2730,12 @@ function renderPriorityTab(){
 }
 function renderPriorityBasisCard(){
   const p = State.priority;
-  const pad2 = n => String(n).padStart(2,'0');
   $('priorityBasisContent').innerHTML = `
     <span class="label-tag">Threshold CASA to Loan</span>
     <div class="cname" style="font-size:16px">Default: &lt; ${fmtDec(p.p25Cov*100)}%</div>
     <div class="customer-hero-grid" style="margin-top:10px">
       <div><div class="f-label">Perlu Kunjungan</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.p25Cov*100)}%</div></div>
       <div><div class="f-label">CASA Memadai</div><div class="f-value">CASA to Loan ≥ ${fmtDec(p.p25Cov*100)}%</div></div>
-    </div>
-    <div class="cname" style="font-size:13px;font-weight:400;margin-top:10px;line-height:1.5">
-      Khusus fasilitas <strong>Perlu Kunjungan</strong>, urutannya disempurnakan pakai sub-prioritas <strong>P1-P3</strong> dari kombinasi <strong>Aktivitas Transaksi</strong> (mutasi kredit bulan terakhir ≥30x, bulan berjalan ${pad2(p.asOfMonth)}/${p.asOfYear}), <strong>NPD Bulan Berjalan</strong> (ada tagihan jatuh tempo bulan ini), dan <strong>DSRA Memadai</strong> (Total Saldo DSRA ≥ Kewajiban Saldo DSRA; kalau fasilitas tidak wajib DSRA, dianggap memadai selama tidak ada tunggakan). Fasilitas CASA Memadai tidak diberi sub-prioritas.
     </div>
   `;
 }
