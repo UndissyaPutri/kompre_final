@@ -2677,12 +2677,23 @@ function buildDsraLookup(){
   });
   return map;
 }
-// Peta noRekening -> apakah pernah ada downgrade kolektibilitas (angka kol
-// naik) di titik manapun dalam s.d. 6 snapshot LW321 historis terakhir +
-// posisi bulan berjalan (LW321 utama). Snapshot diurutkan kronologis pakai
-// tanggal dari nama file (fallback: urutan upload) kalau nama filenya tidak
-// mengandung tanggal. Kalau belum ada file historis yg diupload sama
-// sekali, semua fasilitas dianggap "Tidak ada downgrade" (data blm tersedia).
+// Ordinal kolektibilitas khusus utk deteksi downgrade: Kol 1 Restruk
+// dianggap "lebih berat" drpd Kol 1 murni (walau kode Kol-nya sama-sama 1)
+// tapi masih di bawah Kol 2 — supaya transisi Kol 1 murni -> Kol 1 Restruk
+// tetap terhitung downgrade meski angka Kol-nya tidak berubah. Tidak
+// dipakai di tempat lain (badge Kol, worstKol, dll tetap pakai kode Kol asli).
+function kolOrdinalForDowngrade(row){
+  const kol = parseInt(row.kolAdk, 10) || 1;
+  const isRestruk = cleanStr(row.flagRestruk).toUpperCase() === 'Y';
+  return (kol === 1 && isRestruk) ? 1.5 : kol;
+}
+// Peta noRekening -> apakah pernah ada downgrade kolektibilitas (ordinal kol
+// naik, termasuk transisi Kol 1 murni -> Kol 1 Restruk) di titik manapun
+// dalam s.d. 6 snapshot LW321 historis terakhir + posisi bulan berjalan
+// (LW321 utama). Snapshot diurutkan kronologis pakai tanggal dari nama file
+// (fallback: urutan upload) kalau nama filenya tidak mengandung tanggal.
+// Kalau belum ada file historis yg diupload sama sekali, semua fasilitas
+// dianggap "Tidak ada downgrade" (data blm tersedia).
 function buildHistDowngradeLookup(){
   const map = new Map();
   const snaps = (State.lwHistSnapshots || []).slice();
@@ -2694,12 +2705,12 @@ function buildHistDowngradeLookup(){
     return (a._uploadSeq||0) - (b._uploadSeq||0);
   });
   const recent = snaps.slice(-6); // s.d. 6 bulan terakhir
-  const kolByNoRekening = new Map(); // noRekening -> [kol bulan1, kol bulan2, ...] kronologis
+  const kolByNoRekening = new Map(); // noRekening -> [ordinal kol bulan1, bulan2, ...] kronologis
   recent.forEach(snap => {
     (snap.rows||[]).forEach(row => {
       const noRek = cleanStr(row.noRekening);
       if(!noRek) return;
-      const kol = parseInt(row.kolAdk, 10) || 1;
+      const kol = kolOrdinalForDowngrade(row);
       if(!kolByNoRekening.has(noRek)) kolByNoRekening.set(noRek, []);
       kolByNoRekening.get(noRek).push(kol);
     });
@@ -2708,7 +2719,7 @@ function buildHistDowngradeLookup(){
   (State.raw['LW321']||[]).forEach(row => {
     const noRek = cleanStr(row.noRekening);
     if(!noRek) return;
-    const kol = parseInt(row.kolAdk, 10) || 1;
+    const kol = kolOrdinalForDowngrade(row);
     if(!kolByNoRekening.has(noRek)) kolByNoRekening.set(noRek, []);
     kolByNoRekening.get(noRek).push(kol);
   });
@@ -2759,12 +2770,21 @@ function computePriorityData(){
         dsraMemadai = (loan._tunggakan||0) <= 0;
       }
       const histDowngrade = histDowngradeMap.get(cleanStr(loan.noRekening)) || false;
-      // CASA to Loan tetap kolom paling dominan (lihat komentar TAHAP_DEFS).
-      // NPD Bulan Berjalan memilih tabel; 4 bit sisanya (CASA, DSRA, Trx,
-      // HistDowngrade) di-lookup ke salah satu dari 2 tabel 16-kombinasi.
-      const key = (casaMemadai?'1':'0') + (dsraMemadai?'1':'0') + (aktivitasAktif?'1':'0') + (histDowngrade?'1':'0');
-      const table = npdBulanIni ? TAHAP_TABLE_NPD_ADA : TAHAP_TABLE_NPD_TIDAK;
-      const tahap = table[key] || 't7';
+      // CASA to Loan (<5%) tetap gerbang MUTLAK di awal. Kalau CASA sudah
+      // memadai (>=5%), fasilitas otomatis Tahap 1-4 (Monitoring) — 4
+      // indikator lain (DSRA, Trx, NPD, Hist Downgrade) TIDAK dicek lagi.
+      // Cuma fasilitas yg CASA-nya < 5% ("Perlu RTL") yg lanjut dicek 4
+      // indikator itu & di-lookup ke salah satu dari 2 tabel 16-kombinasi
+      // (NPD Bulan Berjalan menentukan tabel mana; kolom CASA di tabel itu
+      // otomatis "Tidak" krn memang cuma dipakai utk kelompok ini).
+      let tahap;
+      if(casaMemadai){
+        tahap = 't4';
+      } else {
+        const key = '0' + (dsraMemadai?'1':'0') + (aktivitasAktif?'1':'0') + (histDowngrade?'1':'0');
+        const table = npdBulanIni ? TAHAP_TABLE_NPD_ADA : TAHAP_TABLE_NPD_TIDAK;
+        tahap = table[key] || 't7';
+      }
       list.push({c, loan, cov, dpkToLoan, casaMemadai, aktivitasAktif, npdBulanIni, dsraMemadai, histDowngrade, tahap});
     });
   });
@@ -2845,12 +2865,19 @@ function renderPriorityBasisCard(){
     : '';
   $('priorityBasisContent').innerHTML = `
     <span class="label-tag">Dasar Perhitungan Tahap Prioritas</span>
-    <div class="cname" style="font-size:16px">CASA to Loan tetap parameter utama, dikombinasikan dgn DSRA Memadai, Aktivitas Transaksi &amp; Histori Downgrade Kolektibilitas (6 bln terakhir) — NPD Bulan Berjalan menentukan tabel acuan.</div>
+    <div class="cname" style="font-size:16px">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% tetap gerbang MUTLAK di awal ("Perlu RTL"). Fasilitas dgn CASA to Loan ≥ ${fmtDec(p.covThreshold*100)}% ("CASA Memadai") otomatis Tahap 1–4, tidak dicek lebih lanjut. Cuma fasilitas Perlu RTL yg lanjut dicek 4 indikator lain (DSRA Memadai, Aktivitas Transaksi, NPD Bulan Berjalan, Histori Downgrade) utk menentukan Tahap 1–5/1–6/1–7 sesuai tabel.</div>
     <div class="customer-hero-grid" style="margin-top:10px">
-      <div><div class="f-label">Kecukupan CASA</div><div class="f-value">Threshold ${fmtDec(p.covThreshold*100)}% (CASA to Loan)</div></div>
-      <div><div class="f-label">Aktivitas Transaksi</div><div class="f-value">Mutasi kredit ≥30x/bulan terakhir = Aktif</div></div>
-      <div><div class="f-label">NPD Bulan Berjalan</div><div class="f-value">Ada tagihan jatuh tempo bulan ini?</div></div>
-      <div><div class="f-label">DSRA &amp; Histori Downgrade</div><div class="f-value">Saldo DSRA vs kewajiban; kol memburuk 6 bln terakhir?</div></div>
+      <div><div class="f-label">1. Kecukupan CASA (gerbang utama)</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% = Perlu RTL; ≥ ${fmtDec(p.covThreshold*100)}% = CASA Memadai (langsung Tahap 1-4)</div></div>
+      <div><div class="f-label">2. Aktivitas Transaksi</div><div class="f-value">Mutasi kredit ≥30x/bulan terakhir = Aktif</div></div>
+      <div><div class="f-label">3. NPD Bulan Berjalan</div><div class="f-value">Ada tagihan jatuh tempo bulan ini? (menentukan tabel acuan)</div></div>
+      <div><div class="f-label">4. DSRA &amp; Histori Downgrade</div><div class="f-value">Saldo DSRA vs kewajiban; kol memburuk 6 bln terakhir? (Kol 1 Restruk dihitung lebih berat dari Kol 1 murni)</div></div>
+    </div>
+    <div class="detail-section-title" style="margin-top:14px;margin-bottom:6px">Definisi Tahap</div>
+    <div class="customer-hero-grid">
+      ${TAHAP_ORDER.slice().reverse().map(t => {
+        const def = TAHAP_DEFS[t];
+        return `<div><div class="f-label"><span class="badge-pill ${def.badgeCls}">${escapeHtml(def.label)}</span></div><div class="f-value">${escapeHtml(def.desc)}</div></div>`;
+      }).join('')}
     </div>
     ${histNote}${skippedNote}
   `;
