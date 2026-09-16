@@ -2629,9 +2629,13 @@ const TAHAP_TABLE_NPD_TIDAK = {
   '1011':'t6', '1001':'t6', '0100':'t6', '0111':'t6', '0101':'t6',
   '0010':'t7', '0000':'t7', '0011':'t7', '0001':'t7',
 };
-// Yg wajib DSRA & diikutkan logika prioritas cuma segmen Ritel (produktif
-// seperti KPR/konsumtif tidak wajib) — dicek dari DESC SEGMEN LV1 di LW321.
-const isRitelSegment = loan => cleanStr(loan.descSegmenLv1).toUpperCase().includes('RITEL');
+// Yg wajib DSRA & diikutkan logika prioritas cuma segmen Ritel & Kecil
+// (produktif) — segmen lain spt KPR/konsumtif tidak wajib — dicek dari
+// DESC SEGMEN LV1 di LW321.
+const isRitelSegment = loan => {
+  const seg = cleanStr(loan.descSegmenLv1).toUpperCase();
+  return seg.includes('RITEL') || seg.includes('KECIL');
+};
 function percentile(sortedArr, p){
   if(!sortedArr.length) return 0;
   const idx = (p/100) * (sortedArr.length-1);
@@ -2823,6 +2827,126 @@ const PRIORITY_GROUP_DEFS = {
   needsAction: {label:'Perlu Tindak Lanjut', color:'#d64545', tahaps:['t7','t6','t5']},
   casaMemadai: {label:'CASA Memadai',        color:'#0a9d6e', tahaps:['t4']},
 };
+/* ===================================================================
+   JOURNEY & ACTION PLAN — teks referensi SOP per Tahap (statis, bukan
+   diturunkan dari data), ditampilkan lewat popup ketika badge/card Tahap
+   di Ringkasan Tahap Prioritas diklik. Setiap Tahap lebih tinggi mencakup
+   ulang tahap-tahap sebelumnya (kumulatif), persis naskah yang diberikan.
+   ================================================================= */
+const JAP_TAHAP1 = `<li><strong>Tahap 1: Pemenuhan CASA</strong><ul>
+  <li>Memastikan ketersediaan dana nasabah untuk pembayaran kewajiban angsuran sebelum jatuh tempo point to point minimal 14 hari sebelumnya.</li>
+  <li>Melakukan early collection terhadap nasabah yang belum memenuhi CASA 5% dan menjaga komunikasi terhadap nasabah yang telah memenuhi CASA 5%.</li>
+  <li>Memindahkan rekening, mutasi dan transaksi dari Bank lain ke Bank BRI.</li>
+</ul></li>`;
+const JAP_TAHAP2 = `<li><strong>Tahap 2: Pemenuhan DSRA</strong><ul>
+  <li>Memastikan dan meminta kepada nasabah untuk memenuhi saldo minimum DSRA (diluar CASA) sebelum jatuh tempo point to point minimal 10 hari sebelumnya sesuai komitmen dalam perjanjian kredit.</li>
+  <li>Menjaga komunikasi terhadap nasabah yang telah memenuhi saldo minimum DSRA.</li>
+</ul></li>`;
+const JAP_TAHAP3_SPLIT = `<li><strong>Tahap 3: AGF</strong><ul>
+  <li>Jika AGF Berhasil:<ul>
+    <li>Memastikan nasabah untuk lebih menggunakan alat transaksi BRI seperti: Brimo, Qlola, EDC, Kartu Kredit, Tabungan, dan Produk BRI Lainnya.</li>
+    <li>Meningkatkan transaksi dan CASA di BRI.</li>
+  </ul></li>
+  <li>Jika AGF Gagal:<ul>
+    <li>Segera daftarkan AGF.</li>
+    <li>Periksa penyebab AGF gagal dan melakukan perbaikan setting AGF.</li>
+    <li>Pararel persiapan pembukuan manual.</li>
+  </ul></li>
+</ul></li>`;
+const JAP_TAHAP3_FLAT = `<li><strong>Tahap 3: AGF</strong><ul>
+  <li>Memastikan nasabah untuk lebih menggunakan alat transaksi BRI seperti: Brimo, Qlola, EDC, Kartu Kredit, Tabungan, dan Produk BRI Lainnya.</li>
+  <li>Meningkatkan transaksi dan CASA di BRI.</li>
+  <li>Segera daftarkan AGF.</li>
+  <li>Periksa penyebab AGF gagal dan melakukan perbaikan setting AGF.</li>
+  <li>Pararel persiapan pembukuan manual.</li>
+</ul></li>`;
+const JAP_TAHAP3_CONSOL = `<li><strong>Tahap 3: AGF</strong><ul>
+  <li>Jika AGF Berhasil: Memastikan nasabah untuk lebih menggunakan alat transaksi BRI seperti: Brimo, Qlola, EDC, Kartu Kredit, Tabungan, dan Produk BRI Lainnya, serta meningkatkan transaksi dan CASA di BRI.</li>
+  <li>Jika AGF Gagal: Segera daftarkan AGF, periksa penyebab AGF gagal dan lakukan perbaikan setting AGF, serta lakukan paralel persiapan pembukuan manual.</li>
+</ul></li>`;
+const JAP_TAHAP4_SPLIT = `<li><strong>Tahap 4: Pembukuan Manual</strong><ul>
+  <li>Jika Saldo Tercukupi:<ul>
+    <li>Melakukan Pembukuan Manual, termasuk untuk dana atas case saldo terblokir (Pajak, case hukum dll).</li>
+    <li>Segera pastikan pemasangan AGF dengan setting yang sesuai.</li>
+    <li>Tingkatkan CASA dan Transaksi di BRI.</li>
+  </ul></li>
+  <li>Jika Saldo Tidak Tercukupi:<ul>
+    <li>Melakukan upaya penagihan kewajiban angsuran kepada nasabah.</li>
+    <li>Melakukan pendaftaran dan pemasangan AGF.</li>
+  </ul></li>
+</ul></li>`;
+const JAP_TAHAP4_CONSOL = `<li><strong>Tahap 4: Pembukuan Manual</strong><ul>
+  <li>Jika Saldo Tercukupi: Melakukan pembukuan manual (termasuk untuk dana atas case saldo terblokir seperti pajak, case hukum, dll), segera pastikan pemasangan AGF dengan setting yang sesuai, serta tingkatkan CASA dan transaksi di BRI.</li>
+  <li>Jika Saldo Tidak Tercukupi: Melakukan upaya penagihan kewajiban angsuran kepada nasabah serta melakukan pendaftaran dan pemasangan AGF.</li>
+</ul></li>`;
+const JAP_TAHAP5_FLAT = `<li><strong>Tahap 5: Penagihan, Monitoring Transaksi &amp; Evaluasi Usaha</strong><ul>
+  <li>Melakukan upaya penagihan secara aktif melalui media telepon dan sarana komunikasi lainnya guna memastikan pembayaran kewajiban.</li>
+  <li>Melakukan kunjungan penagihan sekaligus melakukan analisa kelangsungan usaha &amp; perkiraan proyeksi kemampuan bayar.</li>
+  <li>Pastikan sumber pembayaran (cashflow usaha yang dibiayai atau sumber lain).</li>
+  <li>Meminta debitur untuk menambah CASA sebesar 5% dari outstanding dan menambah DSRA min. 1 kali kewajiban angsuran.</li>
+  <li>Melakukan evaluasi dan penegasan kepada Debitur terhadap kepatuhan atas kewajiban berbankur utama di BRI sesuai Perjanjian Kredit dan/atau MOA (Main Operating Account), termasuk memastikan transaksi incoming dari buyer dan outgoing kepada seller dilakukan melalui rekening BRI.</li>
+  <li>Pastikan AGF telah terdaftar dan pembukuan manual dilakukan setelah saldo mencukupi.</li>
+  <li>Melakukan pengecekan &amp; monitoring kondisi usaha secara berkala.</li>
+</ul></li>`;
+const JAP_TAHAP5_SPLIT = `<li><strong>Tahap 5: Penagihan, Monitoring Transaksi &amp; Evaluasi Usaha</strong><ul>
+  <li>Kondisi Usaha Normal:<ul>
+    <li>Melakukan upaya penagihan secara aktif melalui media telepon dan sarana komunikasi lainnya guna memastikan pembayaran kewajiban.</li>
+    <li>Melakukan kunjungan penagihan sekaligus melakukan analisa kelangsungan usaha &amp; perkiraan proyeksi kemampuan bayar.</li>
+    <li>Memastikan sumber pembayaran (cashflow usaha yang dibiayai atau sumber lain).</li>
+    <li>Meminta debitur untuk menambah CASA sebesar 5% dari outstanding dan menambah DSRA min. 1 kali kewajiban angsuran.</li>
+    <li>Melakukan evaluasi dan penegasan kepada debitur terhadap kepatuhan atas kewajiban berbankur utama di BRI sesuai Perjanjian Kredit dan/atau MOA (Main Operating Account), termasuk memastikan transaksi incoming dari buyer dan outgoing kepada seller dilakukan melalui rekening BRI.</li>
+    <li>Memastikan AGF telah terdaftar dan pembukuan manual dilakukan setelah saldo mencukupi.</li>
+    <li>Melakukan pengecekan &amp; monitoring kondisi usaha secara berkala.</li>
+  </ul></li>
+  <li>Kondisi Usaha Menurun:<ul>
+    <li>Melakukan LKN penagihan sekaligus melakukan analisa kelangsungan usaha &amp; perkiraan proyeksi kemampuan bayar.</li>
+    <li>Paralel melakukan assesment apakah debitur perlu dilakukan upaya restrukturisasi.</li>
+    <li>Memastikan apakah debitur memenuhi kriteria restrukturisasi.</li>
+    <li>Mengecek frekuensi restrukturisasi debitur.</li>
+    <li>Melakukan pengecekan terhadap kondisi agunan secara off-site dan on-site.</li>
+    <li>RM Small tetap melakukan upaya penagihan dan mendorong pemenuhan kewajiban pembayaran hingga akhir bulan, serta melakukan koordinasi dengan RM Quality paling lambat H-7 sebelum jatuh tempo point to point, guna memberikan waktu yang memadai bagi RM Quality untuk menyiapkan prakarsa restrukturisasi apabila diperlukan.</li>
+  </ul></li>
+</ul></li>`;
+const JAP_TAHAP6_FLAT = `<li><strong>Tahap 6: Restrukturisasi</strong><ul>
+  <li>Melakukan upaya restrukturisasi hingga akad oleh RM Quality (RM Small hanya pendampingan).</li>
+  <li>Tetap melakukan upaya tambahan untuk menagih minimal 1 kali angsuran untuk menjaga kolektibilitas selama restruktur diajukan.</li>
+  <li>Melakukan monitoring berkala terhadap usaha debitur.</li>
+</ul></li>`;
+const JAP_TAHAP6_SPLIT = `<li><strong>Tahap 6: Restrukturisasi</strong><ul>
+  <li>Jika Memenuhi Syarat (Usulan Restrukturisasi): Melakukan upaya restrukturisasi hingga akad oleh RM Quality (RM Small hanya pendampingan), tetap melakukan upaya tambahan untuk menagih minimal 1 kali angsuran untuk menjaga kolektibilitas selama restruktur diajukan, serta melakukan monitoring berkala terhadap usaha debitur.</li>
+  <li>Jika Tidak Memenuhi Syarat / Merugikan (Usulan Upaya Penyelesaian): Periksa kondisi agunan dan berkoordinasi dengan RM SRC beserta pengikatannya, menawarkan penyelesaian damai (bawah tangan), serta melakukan pemeriksaan dokumen kredit (termasuk covering asuransi).</li>
+</ul></li>`;
+const JAP_TAHAP7 = `<li><strong>Tahap 7: Penyelesaian di Bawah Tangan</strong><ul>
+  <li>Jika Berkenan (Penyelesaian di Bawah Tangan): RM berkoordinasi dengan COP untuk persiapan dokumen agunan &amp; pengikatannya, RM tetap berkoordinasi dengan debitur perihal cara penyelesaian di bawah tangan tersebut, serta uker melakukan support data yang diperlukan selama data yang diminta diperbolehkan untuk diberikan pada pihak nasabah ataupun pihak ketiga.</li>
+  <li>Jika Tidak Berkenan / Gagal (Upaya Penyelesaian Gagal): Periksa kondisi agunan terkini beserta pengikatannya, tetap tawarkan penyelesaian dibawah tangan, lakukan pemeriksaan dokumen kredit (termasuk covering asuransi), serta kirimkan Surat Peringatan dan dapat dilakukan PTK Koi jika memiliki peluang untuk klaim asuransi.</li>
+</ul></li>`;
+function japWrap(intro, itemsHtml){
+  return `<div style="font-size:13px;line-height:1.6">
+    ${intro ? `<p style="margin:0 0 10px;color:var(--text-muted)">${escapeHtml(intro)}</p>` : ''}
+    <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px">${itemsHtml}</ol>
+  </div>`;
+}
+const JOURNEY_ACTION_PLAN = {
+  t4: japWrap('Berikut adalah ringkasan Journey dan Action Plan dengan kondisi AGF yang disatukan di dalam Tahap 3 tanpa dipisah:',
+    JAP_TAHAP1 + JAP_TAHAP2 + JAP_TAHAP3_SPLIT + JAP_TAHAP4_SPLIT),
+  t5: japWrap(null,
+    JAP_TAHAP1 + JAP_TAHAP2 + JAP_TAHAP3_FLAT + JAP_TAHAP4_SPLIT + JAP_TAHAP5_FLAT),
+  t6: japWrap('Berikut adalah gabungan seluruh Journey dan Action Plan secara utuh ke dalam masing-masing tahap tanpa dipisah menjadi bagian lanjutan:',
+    JAP_TAHAP1 + JAP_TAHAP2 + JAP_TAHAP3_CONSOL + JAP_TAHAP4_CONSOL + JAP_TAHAP5_SPLIT + JAP_TAHAP6_FLAT),
+  t7: japWrap('Berikut adalah gabungan lengkap seluruh Journey beserta Action Plan dari keseluruhan tahap tanpa dipisah menjadi bagian lanjutan:',
+    JAP_TAHAP1 + JAP_TAHAP2 + JAP_TAHAP3_CONSOL + JAP_TAHAP4_CONSOL + JAP_TAHAP5_SPLIT + JAP_TAHAP6_SPLIT + JAP_TAHAP7),
+};
+// Popup Journey & Action Plan — dipicu dari badge/card Tahap di Ringkasan
+// Tahap Prioritas. Reuse modal rekening koran (rkModal*).
+function showJourneyActionPlanModal(tahap){
+  const def = TAHAP_DEFS[tahap];
+  if(!def) return;
+  $('rkModalTitle').textContent = `Journey & Action Plan — ${def.label}`;
+  $('rkModalSub').textContent = def.desc;
+  $('rkModalBody').innerHTML = JOURNEY_ACTION_PLAN[tahap] || '<div class="empty">Belum ada Journey &amp; Action Plan untuk Tahap ini.</div>';
+  $('rkModalOverlay').classList.add('show');
+}
+window.showJourneyActionPlanModal = showJourneyActionPlanModal;
 function renderPriorityQuadGrid(){
   const {tahapCounts} = State.priority;
   $('priorityQuadGrid').innerHTML = Object.keys(PRIORITY_GROUP_DEFS).map(g => {
@@ -2847,17 +2971,21 @@ function syncPriorityTahapFilterUI(){
   document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.group === State.activePriorityGroup));
 }
 function selectPriorityGroup(g){
-  State.activePriorityGroup = (State.activePriorityGroup === g) ? null : g;
+  const turningOn = State.activePriorityGroup !== g;
+  State.activePriorityGroup = turningOn ? g : null;
   State.activePriorityTahap = null;
   syncPriorityTahapFilterUI();
   renderPriorityTable();
+  if(turningOn && g === 'casaMemadai') showJourneyActionPlanModal('t4');
 }
 window.selectPriorityGroup = selectPriorityGroup;
 function selectPriorityTahap(t){
-  State.activePriorityTahap = (State.activePriorityTahap === t) ? null : t;
+  const turningOn = State.activePriorityTahap !== t;
+  State.activePriorityTahap = turningOn ? t : null;
   State.activePriorityGroup = null;
   syncPriorityTahapFilterUI();
   renderPriorityTable();
+  if(turningOn) showJourneyActionPlanModal(t);
 }
 window.selectPriorityTahap = selectPriorityTahap;
 function renderPriorityTable(){
@@ -2940,15 +3068,12 @@ function renderPriorityBasisCard(){
   const histNote = p.histDataAvailable
     ? ''
     : `<div class="rec-note" style="margin-top:10px"><strong>Catatan:</strong> file LW321 Historis (s.d. 6 bulan terakhir) belum diupload — kondisi "Histori Downgrade" dianggap "Tidak" sementara untuk semua fasilitas.</div>`;
-  const skippedNote = p.skippedNonRitel > 0
-    ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${p.skippedNonRitel} fasilitas di luar segmen Ritel (mis. konsumtif/KPR) tidak wajib DSRA — dilewati dari daftar ini.</div>`
-    : '';
   $('priorityBasisContent').innerHTML = `
     <div class="detail-section-title" style="margin-top:0;margin-bottom:6px">Prioritas Pengelolaan</div>
     <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:13px">
       ${TAHAP_ORDER.map(t => `<li><span class="badge-pill ${TAHAP_DEFS[t].badgeCls}">RTL ${escapeHtml(TAHAP_DEFS[t].label)}</span></li>`).join('')}
     </ol>
-    ${histNote}${skippedNote}
+    ${histNote}
   `;
 }
 $('prioritySearch').addEventListener('input', renderPriorityTable);
