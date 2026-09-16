@@ -781,7 +781,7 @@ function getScopedCustomers(){
   if(kanca) list = list.filter(c => c.kanca === kanca);
   if(uker) list = list.filter(c => c.uker === uker);
   if(rm) list = list.filter(c => c.rmPengelola === rm);
-  if(rmFt) list = list.filter(c => c.rmFundingList.includes(rmFt));
+  if(rmFt) list = list.filter(c => (c.rmFundingList||[]).some(code => rmFtEntryMatches(code, rmFt)));
   State._scopedCache = list;
   State._scopedCacheKey = key;
   return list;
@@ -843,7 +843,7 @@ function getOppScopedCustomers(){
   if(rmFt){
     const pairedSme = findPairedRmSme(rmFt);
     list = list.filter(c =>
-      (c.rmFundingList && c.rmFundingList.some(name => name.toUpperCase().includes(rmFt.toUpperCase()))) ||
+      (c.rmFundingList && c.rmFundingList.some(code => rmFtEntryMatches(code, rmFt))) ||
       (pairedSme && c.rmPengelola && c.rmPengelola.toUpperCase().includes(pairedSme.toUpperCase()))
     );
   }
@@ -857,9 +857,9 @@ function getScopedFundingOnlyProspects(){
   if(uker) list = list.filter(p => p.uker === uker);
   if(rm){
     const pairedFt = findPairedRmFt(rm);
-    list = pairedFt ? list.filter(p => p.rmFundingList && p.rmFundingList.some(name => name.toUpperCase().includes(pairedFt.toUpperCase()))) : [];
+    list = pairedFt ? list.filter(p => p.rmFundingList && p.rmFundingList.some(code => rmFtEntryMatches(code, pairedFt))) : [];
   }
-  if(rmFt) list = list.filter(p => p.rmFundingList && p.rmFundingList.some(name => name.toUpperCase().includes(rmFt.toUpperCase())));
+  if(rmFt) list = list.filter(p => p.rmFundingList && p.rmFundingList.some(code => rmFtEntryMatches(code, rmFt)));
   return list;
 }
 /* ===================================================================
@@ -903,6 +903,23 @@ const pnDisplay = v => {
   return s;
 };
 window.pnDisplay = pnDisplay;
+// Cek apakah satu kode PN RM FT (raw, mis. "00406392", tersimpan di
+// c.rmFundingList/p.rmFundingList) cocok dgn query dari filter global RM FT.
+// Cocok kalau: sama persis dgn kode mentahnya (perilaku lama, tetap
+// dipertahankan supaya kompatibel walau belum upload Master PN/DI319), ATAU
+// query-nya cocok (exact/substring, case-insensitive) dgn tampilan
+// "kode - nama"-nya kalau namanya sudah ke-lookup. Ini yg bikin dropdown
+// filter RM FT bisa ditampilkan & dicari pakai nama, bukan cuma kode polos.
+const rmFtEntryMatches = (code, query) => {
+  if(!query) return true;
+  const c = cleanStr(code);
+  if(!c) return false;
+  const q = query.trim().toUpperCase();
+  if(c.toUpperCase() === q) return true;
+  const disp = pnDisplay(c).toUpperCase();
+  return disp === q || disp.includes(q);
+};
+window.rmFtEntryMatches = rmFtEntryMatches;
 const normHeader = h => cleanStr(h).toUpperCase();
 // Sort abjad (case-insensitive, angka di dalam nama/kode diurutkan
 // numerik) — dipakai utk dropdown filter RM Pengelola biar urutannya jelas.
@@ -1499,10 +1516,11 @@ function assignFileToSlot(key, file){
       statusEl.className = 'slot-status ok';
       statusEl.textContent = `✓ ${file.name}, ${map.size.toLocaleString('id-ID')} kode PN terpetakan`;
       card.classList.add('filled');
-      // Nama RM langsung ke-refresh di tabel/tab yg lagi kebuka, tanpa perlu
-      // klik "Proses Data" ulang.
+      // Nama RM langsung ke-refresh di tabel/tab/dropdown yg lagi kebuka,
+      // tanpa perlu klik "Proses Data" ulang.
       if(State.priority) renderPriorityTable();
       if(typeof renderRmPairingTable === 'function' && document.getElementById('rmPairingBody')) renderRmPairingTable();
+      if(State.customers && State.customers.size) refreshRmFtOptions();
       updateProcessButton();
     }).catch(err => {
       statusEl.className = 'slot-status err';
@@ -1930,7 +1948,9 @@ function refreshRmFtOptions(){
   const kanwil = $('gfKanwil').value, kanca = $('gfKanca').value, uker = $('gfUker').value;
   const all = [...State.customers.values()].filter(c =>
     (!kanwil || c.kanwil===kanwil) && (!kanca || c.kanca===kanca) && (!uker || c.uker===uker));
-  const rmFtSet = new Set(all.flatMap(c => c.rmFundingList));
+  // Tampilkan opsi dropdown dgn nama (kalau sudah ke-lookup dari Master PN/
+  // DI319) supaya bisa dicari/dipilih pakai nama, bukan cuma kode polos.
+  const rmFtSet = new Set(all.flatMap(c => c.rmFundingList).map(pnDisplay).filter(v => v && v !== '-'));
   $('gfRmFtList').innerHTML = [...rmFtSet].sort(sortAbjad).map(v=>`<option value="${escapeHtml(v)}">`).join('');
 }
 function applyGlobalFilter(){
