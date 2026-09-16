@@ -679,7 +679,7 @@ table.data-table td.empty{text-align:center}
       <div class="panel">
         <div class="panel-header">
           <div>
-            <div class="panel-title">Prioritas Pengelolaan: CASA to Loan</div>
+            <div class="panel-title">Prioritas Pengelolaan: Tahap 1–4 s.d. 1–7</div>
           </div>
         </div>
         <div class="panel-body">
@@ -687,7 +687,7 @@ table.data-table td.empty{text-align:center}
           <div class="customer-hero" id="priorityBasisCard" style="padding:14px 20px;margin-bottom:18px">
             <div class="customer-hero-inner" id="priorityBasisContent"></div>
           </div>
-          <div class="detail-section-title">Ringkasan CASA to Loan</div>
+          <div class="detail-section-title">Ringkasan Tahap Prioritas</div>
           <div class="opp-grid" id="priorityQuadGrid"></div>
           <div class="detail-section-title">Daftar Prioritas Pengelolaan</div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
@@ -739,11 +739,15 @@ const SLOTS = [
    desc:'Opsional, bisa >1 file, digabung by CIF.'},
   {key:'DSRA', title:'Report Giro DSRA', required:false, ext:'.xlsx', match:['DSRA'],
    desc:'Kewajiban & saldo DSRA per fasilitas pinjaman, dipakai untuk logika Prioritas Pengelolaan (dicocokkan by Nomor Rekening Pinjaman).'},
+  {key:'LW_HIST', title:'LW321 Historis (s.d. 6 Bulan Terakhir)', required:false, ext:'.xlsx', match:['HISTORIS','HIST LW','LW HIST','LW321 HIST'], multiple:true,
+   desc:'Opsional, bisa upload beberapa file LW321 snapshot BULAN-BULAN SEBELUMNYA (format sama seperti LW321 utama) — dipakai utk deteksi downgrade kolektibilitas 6 bulan terakhir di Prioritas Pengelolaan. Sertakan bulan/tahun di nama file (mis. LW321_Agustus2026.xlsx) supaya urutan bulannya kedeteksi otomatis; kalau tidak, dipakai urutan upload.'},
 ];
 const State = {
   files:{},        // key -> {file, name}
   fileNames:{},     // key -> array of uploaded file names (slots with multiple:true accumulate here)
   raw:{},          // key -> parsed array of row objects
+  lwHistSnapshots:[], // {fileName, dateGuess, _uploadSeq, rows} — snapshot LW321 bulan-bulan sebelumnya, utk cek downgrade kolektibilitas
+  lwHistUploadSeq:0,
   customers:new Map(), // cif -> customer object (full, unfiltered universe)
   globalFilter:{kanwil:'', kanca:'', uker:'', rm:'', rmFt:''}, // scope selected by top filter bar
   filteredCust:[],
@@ -752,7 +756,7 @@ const State = {
   activeOpp:null,
   oppCategories:null,
   priority:null,
-  activePriorityQuad:null,
+  activePriorityTahap:null,
   priorityOverride:{os:null, cov:null},
   charts:{},
   diag:{},
@@ -989,6 +993,7 @@ const PARSERS = {
   EDC:   {req:['CIFNO','MID'], map:MAP_EDC, key:'cif'},
   QRIS:  {req:['CIF','MERCHANT_PAN'], map:MAP_QRIS, key:'cif'},
   DSRA:  {req:['CIF','NOMOR REKENING PINJAMAN'], map:MAP_DSRA, key:'noRekeningPinjaman'},
+  LW_HIST: {req:['CIFNO','NOMOR_REKENING'], map:MAP_LW321, key:'cif'},
 };
 /* ===================================================================
    FILE READERS
@@ -1374,11 +1379,58 @@ function mergeProductHoldingRows(existingRows, newRows){
   (newRows||[]).forEach(r => { if(r.cif) byCif.set(r.cif, r); });
   return [...byCif.values()];
 }
+// Cari pola tanggal/bulan-tahun di nama file snapshot historis LW321, dipakai
+// utk urutan kronologis kalau user upload >1 file. Return timestamp awal
+// bulan, atau null kalau nama filenya tidak mengandung pola yg dikenali
+// (fallback ke urutan upload).
+function extractDateFromFilename(name){
+  const s = cleanStr(name).toUpperCase();
+  let m = s.match(/(\d{1,2})[-_](\d{1,2})[-_](\d{4})/);
+  if(m) return new Date(+m[3], +m[2]-1, 1).getTime();
+  m = s.match(/(\d{4})[-_](\d{1,2})[-_](\d{1,2})/);
+  if(m) return new Date(+m[1], +m[2]-1, 1).getTime();
+  m = s.match(/(?:^|[^0-9])(\d{1,2})[-_](20\d{2})(?:[^0-9]|$)/);
+  if(m) return new Date(+m[2], +m[1]-1, 1).getTime();
+  m = s.match(/(20\d{2})(0[1-9]|1[0-2])(?!\d)/);
+  if(m) return new Date(+m[1], +m[2]-1, 1).getTime();
+  m = s.match(/(0[1-9]|1[0-2])(20\d{2})/);
+  if(m) return new Date(+m[2], +m[1]-1, 1).getTime();
+  const BULAN = {JANUARI:0,JAN:0,FEBRUARI:1,FEB:1,MARET:2,MAR:2,APRIL:3,APR:3,MEI:4,JUNI:5,JUN:5,JULI:6,JUL:6,AGUSTUS:7,AGU:7,AGT:7,SEPTEMBER:8,SEP:8,OKTOBER:9,OKT:9,NOVEMBER:10,NOV:10,DESEMBER:11,DES:11};
+  for(const key2 in BULAN){
+    const idx = s.indexOf(key2);
+    if(idx < 0) continue;
+    const rest = s.slice(idx+key2.length);
+    const ym = rest.match(/^[^0-9]{0,3}(20\d{2})/);
+    if(ym) return new Date(+ym[1], BULAN[key2], 1).getTime();
+  }
+  return null;
+}
 function assignFileToSlot(key, file){
   const slotDef = SLOTS.find(s => s.key === key);
   const isMultiSlot = !!(slotDef && slotDef.multiple);
   const statusEl = $('slotStatus_'+key);
   const card = $('slotCard_'+key);
+  if(key === 'LW_HIST'){
+    statusEl.textContent = `⏳ Memvalidasi ${file.name}...`;
+    card.classList.remove('filled');
+    parseFileForSlot(key, file).then(rows => {
+      State.fileNames[key] = State.fileNames[key] || [];
+      State.lwHistSnapshots = (State.lwHistSnapshots||[]).filter(sn => sn.fileName !== file.name);
+      const dateGuess = extractDateFromFilename(file.name);
+      State.lwHistSnapshots.push({fileName:file.name, dateGuess, _uploadSeq: State.lwHistUploadSeq++, rows});
+      if(!State.fileNames[key].includes(file.name)) State.fileNames[key].push(file.name);
+      const anyUndated = State.lwHistSnapshots.some(sn => sn.dateGuess == null);
+      statusEl.className = 'slot-status ok';
+      statusEl.textContent = `✓ ${State.fileNames[key].length} file snapshot bulanan terbaca${anyUndated ? ' (sebagian nama file tanpa tanggal, urutan pakai urutan upload)' : ''}`;
+      card.classList.add('filled');
+      updateProcessButton();
+    }).catch(err => {
+      statusEl.className = 'slot-status err';
+      statusEl.textContent = `✗ Gagal membaca file ${file.name}: ${err.message}`;
+      updateProcessButton();
+    });
+    return;
+  }
   if(isMultiSlot){
     State.files[key] = file;
     State.fileNames[key] = State.fileNames[key] || [];
@@ -2536,39 +2588,42 @@ $('oppPinjamanJenisFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.
 $('oppPinjamanSortFilter').addEventListener('change', () => { if(OPP_LOAN_KEYS.includes(State.activeOpp)) reRenderOppSelection(false); });
 $('oppKolFilter').addEventListener('change', () => { if(State.activeOpp==='kolWatch') selectOpp('kolWatch', true); });
 /* ===================================================================
-   PRIORITAS PENGELOLAAN — CASA to Loan tetap jadi parameter utama (gerbang
-   utama Perlu Kunjungan vs CASA Memadai, seperti sebelumnya). Sub-prioritas
-   P1-P4 dari kombinasi Aktivitas Transaksi, NPD Bulan Berjalan & DSRA
-   Memadai dihitung utk KEDUA kelompok — Perlu Kunjungan dapat P1-P3, CASA
-   Memadai dapat P2-P4 — persis matriks 16 kombinasi lengkap yang sudah
-   disepakati sebelumnya, cuma dipecah jadi 2 lookup 8-kombinasi (dibagi
-   oleh gerbang CASA to Loan) supaya CASA to Loan tetap parameter utama.
+   PRIORITAS PENGELOLAAN — hasil akhirnya "Tahap 1-4/1-5/1-6/1-7" (makin
+   besar rentangnya makin prioritas). CASA to Loan (Ya = memadai >=5%)
+   tetap jadi kolom paling dominan di tabel lookup — semua kombinasi
+   CASA=Ya selalu jatuh ke Tahap 1-4/1-5/1-6 (tidak pernah 1-7), sementara
+   CASA=Tidak selalu jatuh ke 1-5/1-6/1-7 (tidak pernah 1-4). NPD Bulan
+   Berjalan (ada/tidak) memilih salah satu dari 2 tabel lookup 16-kombinasi
+   (CASA × DSRA Memadai × Aktivitas Transaksi × Histori Downgrade) sesuai
+   matriks yg diberikan user. Hanya fasilitas segmen Ritel (DESC SEGMEN
+   LV1) yg wajib DSRA & diikutkan; segmen lain (mis. konsumtif/KPR) di-skip
+   dari logika ini.
    ================================================================= */
-const QUAD_DEFS = {
-  needsVisit: {label:'Perlu Kunjungan', color:'#d64545', badgeCls:'k-5', sub:''},
-  sehat:      {label:'CASA Memadai',    color:'#0a9d6e', badgeCls:'k-1', sub:''},
+const TAHAP_DEFS = {
+  t4: {label:'Tahap 1–4', desc:'Prioritas paling rendah / Monitoring',            color:'#0a9d6e', badgeCls:'k-1'},
+  t5: {label:'Tahap 1–5', desc:'Perlu Perhatian',                                  color:'#b45f11', badgeCls:'k-3'},
+  t6: {label:'Tahap 1–6', desc:'Prioritas Tinggi',                                 color:'#c2571c', badgeCls:'k-4'},
+  t7: {label:'Tahap 1–7', desc:'Prioritas Paling Tinggi / Tindak Lanjut Intensif', color:'#d64545', badgeCls:'k-5'},
 };
-const PRIORITY_DEFS = {
-  p1: {label:'P1', desc:'Prioritas tertinggi', color:'#d64545', badgeCls:'k-5'},
-  p2: {label:'P2', desc:'Prioritas tinggi',    color:'#c2571c', badgeCls:'k-4'},
-  p3: {label:'P3', desc:'Prioritas sedang',    color:'#b45f11', badgeCls:'k-3'},
-  p4: {label:'P4', desc:'Prioritas rendah',    color:'#0a9d6e', badgeCls:'k-1'},
+const TAHAP_ORDER = ['t7','t6','t5','t4']; // urutan tampil: paling prioritas duluan
+// Kunci = `${casaMemadai}${dsraMemadai}${trxAktif}${histDowngrade}` (1=Ya, 0=Tidak).
+// Dipakai kalau fasilitas ADA tagihan (NPD) jatuh tempo bulan berjalan.
+const TAHAP_TABLE_NPD_ADA = {
+  '1110':'t4', '1100':'t4', '1111':'t4',
+  '1101':'t5', '1010':'t5', '1000':'t5', '1011':'t5',
+  '1001':'t6', '0110':'t6', '0100':'t6', '0111':'t6', '0101':'t6',
+  '0010':'t7', '0000':'t7', '0011':'t7', '0001':'t7',
 };
-// Kunci = `${aktivitasAktif}${npdBulanIni}${dsraMemadai}` (1=Ya, 0=Tidak).
-// Dipakai utk fasilitas CASA to Loan < 5% (Perlu Kunjungan) -> P1-P3.
-// Kombinasi 000 (semua kondisi lain juga buruk) diputuskan masuk P2, bukan
-// P1, karena tidak ada tagihan jatuh tempo bulan ini.
-const PRIORITY_MATRIX_LOW_CASA = {
-  '010':'p1', '011':'p1', '110':'p1',
-  '111':'p2', '000':'p2', '001':'p2', '100':'p2',
-  '101':'p3',
+// Sama, dipakai kalau TIDAK ADA NPD bulan berjalan.
+const TAHAP_TABLE_NPD_TIDAK = {
+  '1110':'t4', '1100':'t4', '1111':'t4',
+  '1101':'t5', '1010':'t5', '1000':'t5', '0110':'t5',
+  '1011':'t6', '1001':'t6', '0100':'t6', '0111':'t6', '0101':'t6',
+  '0010':'t7', '0000':'t7', '0011':'t7', '0001':'t7',
 };
-// Sama, dipakai utk fasilitas CASA to Loan >= 5% (CASA Memadai) -> P2-P4.
-const PRIORITY_MATRIX_HIGH_CASA = {
-  '010':'p2',
-  '011':'p3', '000':'p3', '110':'p3',
-  '001':'p4', '111':'p4', '100':'p4', '101':'p4',
-};
+// Yg wajib DSRA & diikutkan logika prioritas cuma segmen Ritel (produktif
+// seperti KPR/konsumtif tidak wajib) — dicek dari DESC SEGMEN LV1 di LW321.
+const isRitelSegment = loan => cleanStr(loan.descSegmenLv1).toUpperCase().includes('RITEL');
 function percentile(sortedArr, p){
   if(!sortedArr.length) return 0;
   const idx = (p/100) * (sortedArr.length-1);
@@ -2622,17 +2677,59 @@ function buildDsraLookup(){
   });
   return map;
 }
+// Peta noRekening -> apakah pernah ada downgrade kolektibilitas (angka kol
+// naik) di titik manapun dalam s.d. 6 snapshot LW321 historis terakhir +
+// posisi bulan berjalan (LW321 utama). Snapshot diurutkan kronologis pakai
+// tanggal dari nama file (fallback: urutan upload) kalau nama filenya tidak
+// mengandung tanggal. Kalau belum ada file historis yg diupload sama
+// sekali, semua fasilitas dianggap "Tidak ada downgrade" (data blm tersedia).
+function buildHistDowngradeLookup(){
+  const map = new Map();
+  const snaps = (State.lwHistSnapshots || []).slice();
+  if(!snaps.length) return map;
+  snaps.sort((a,b) => {
+    if(a.dateGuess != null && b.dateGuess != null) return a.dateGuess - b.dateGuess;
+    if(a.dateGuess != null) return -1;
+    if(b.dateGuess != null) return 1;
+    return (a._uploadSeq||0) - (b._uploadSeq||0);
+  });
+  const recent = snaps.slice(-6); // s.d. 6 bulan terakhir
+  const kolByNoRekening = new Map(); // noRekening -> [kol bulan1, kol bulan2, ...] kronologis
+  recent.forEach(snap => {
+    (snap.rows||[]).forEach(row => {
+      const noRek = cleanStr(row.noRekening);
+      if(!noRek) return;
+      const kol = parseInt(row.kolAdk, 10) || 1;
+      if(!kolByNoRekening.has(noRek)) kolByNoRekening.set(noRek, []);
+      kolByNoRekening.get(noRek).push(kol);
+    });
+  });
+  // Posisi bulan berjalan (LW321 utama) jadi titik paling akhir di rangkaian.
+  (State.raw['LW321']||[]).forEach(row => {
+    const noRek = cleanStr(row.noRekening);
+    if(!noRek) return;
+    const kol = parseInt(row.kolAdk, 10) || 1;
+    if(!kolByNoRekening.has(noRek)) kolByNoRekening.set(noRek, []);
+    kolByNoRekening.get(noRek).push(kol);
+  });
+  kolByNoRekening.forEach((seq, noRek) => {
+    let downgraded = false;
+    for(let i=1; i<seq.length; i++){ if(seq[i] > seq[i-1]){ downgraded = true; break; } }
+    map.set(noRek, downgraded);
+  });
+  return map;
+}
 function computePriorityData(){
-  State.customers.forEach(c => { c.priorityQuad = null; });
   const custs = getScopedCustomers();
   const dsraMap = buildDsraLookup();
+  const histDowngradeMap = buildHistDowngradeLookup();
   const {year:asOfYear, month:asOfMonth} = getAsOfYearMonth();
-  const COV_FIXED_THRESHOLD = 0.05;
+  const COV_THRESHOLD = 0.05;
   const list = [];
+  let skippedNonRitel = 0;
   custs.forEach(c => {
     const cov = c.casaToLoan ?? 0;
-    const quad = cov < COV_FIXED_THRESHOLD ? 'needsVisit' : 'sehat';
-    c.priorityQuad = quad;
+    const casaMemadai = cov >= COV_THRESHOLD;
     // Rasio DPK to Loan: (Tabungan+Giro+Deposito) / Baki Debet Pinjaman —
     // sama basis OS dgn CASA to Loan, cuma pembilangnya ikut Deposito.
     const dpkToLoan = c.totalBakiDebet > 0 ? (c.totalFunding / c.totalBakiDebet) : null;
@@ -2642,6 +2739,9 @@ function computePriorityData(){
     const lastMonth = rk.length ? rk[rk.length-1] : null;
     const aktivitasAktif = !!(lastMonth && (lastMonth.freq||0) >= 30);
     c.loans.filter(l => l._baki > 0).forEach(loan => {
+      // Yg wajib DSRA cuma segmen Ritel (produktif) — KPR/konsumtif dkk di
+      // luar itu di-skip dari logika prioritas ini.
+      if(!isRitelSegment(loan)){ skippedNonRitel++; return; }
       const npdTs = parseLooseDate(loan.nextPmtDate);
       let npdBulanIni = false;
       if(npdTs != null){
@@ -2658,19 +2758,18 @@ function computePriorityData(){
         // yang perlu ditutup).
         dsraMemadai = (loan._tunggakan||0) <= 0;
       }
-      // CASA to Loan tetap parameter utama/gerbang (quad); sub-prioritas
-      // P1-P4 dihitung utk kedua kelompok, cuma beda lookup 8-kombinasi:
-      // Perlu Kunjungan -> P1-P3, CASA Memadai -> P2-P4.
-      const key = (aktivitasAktif?'1':'0') + (npdBulanIni?'1':'0') + (dsraMemadai?'1':'0');
-      const priority = quad === 'needsVisit'
-        ? (PRIORITY_MATRIX_LOW_CASA[key] || 'p3')
-        : (PRIORITY_MATRIX_HIGH_CASA[key] || 'p4');
-      list.push({c, loan, cov, dpkToLoan, quad, aktivitasAktif, npdBulanIni, dsraMemadai, priority});
+      const histDowngrade = histDowngradeMap.get(cleanStr(loan.noRekening)) || false;
+      // CASA to Loan tetap kolom paling dominan (lihat komentar TAHAP_DEFS).
+      // NPD Bulan Berjalan memilih tabel; 4 bit sisanya (CASA, DSRA, Trx,
+      // HistDowngrade) di-lookup ke salah satu dari 2 tabel 16-kombinasi.
+      const key = (casaMemadai?'1':'0') + (dsraMemadai?'1':'0') + (aktivitasAktif?'1':'0') + (histDowngrade?'1':'0');
+      const table = npdBulanIni ? TAHAP_TABLE_NPD_ADA : TAHAP_TABLE_NPD_TIDAK;
+      const tahap = table[key] || 't7';
+      list.push({c, loan, cov, dpkToLoan, casaMemadai, aktivitasAktif, npdBulanIni, dsraMemadai, histDowngrade, tahap});
     });
   });
   list.sort((a,b) => {
-    if(a.quad !== b.quad) return a.quad === 'needsVisit' ? -1 : 1;
-    if(a.priority !== b.priority) return a.priority.localeCompare(b.priority); // p1 < p2 < p3 < p4
+    if(a.tahap !== b.tahap) return TAHAP_ORDER.indexOf(a.tahap) - TAHAP_ORDER.indexOf(b.tahap);
     if(a.loan._baki !== b.loan._baki) return a.loan._baki - b.loan._baki; // saldo (OS) terkecil dulu
     const da = parseLooseDate(a.loan.nextPmtDate), db = parseLooseDate(b.loan.nextPmtDate);
     if(da == null && db == null) return 0;
@@ -2678,47 +2777,42 @@ function computePriorityData(){
     if(db == null) return -1;
     return da - db; // next payment date paling cepat dulu
   });
-  const quadCounts = {needsVisit:0, sehat:0};
-  // priorityCounts di-nest per quad — P2 dari "Perlu Kunjungan" (matrix LOW_CASA)
-  // dan P2 dari "CASA Memadai" (matrix HIGH_CASA) adalah kombinasi kondisi yang
-  // berbeda, jadi tidak boleh dijumlah jadi satu angka P2 gabungan.
-  const priorityCounts = {needsVisit:{p1:0,p2:0,p3:0,p4:0}, sehat:{p1:0,p2:0,p3:0,p4:0}};
-  list.forEach(r => { quadCounts[r.quad]++; priorityCounts[r.quad][r.priority]++; });
-  State.priority = {list, p25Cov:COV_FIXED_THRESHOLD, quadCounts, priorityCounts, asOfYear, asOfMonth};
+  const tahapCounts = {t4:0, t5:0, t6:0, t7:0};
+  list.forEach(r => { tahapCounts[r.tahap]++; });
+  State.priority = {
+    list, covThreshold:COV_THRESHOLD, tahapCounts, skippedNonRitel, asOfYear, asOfMonth,
+    histDataAvailable: (State.lwHistSnapshots||[]).length > 0,
+  };
 }
 function renderPriorityQuadGrid(){
-  const {quadCounts, priorityCounts} = State.priority;
-  $('priorityQuadGrid').innerHTML = Object.keys(QUAD_DEFS).map(q => {
-    const def = QUAD_DEFS[q];
-    const count = quadCounts[q] || 0;
+  const {tahapCounts} = State.priority;
+  $('priorityQuadGrid').innerHTML = TAHAP_ORDER.map(t => {
+    const def = TAHAP_DEFS[t];
+    const count = tahapCounts[t] || 0;
     const isEmpty = count === 0;
-    const pc = priorityCounts[q] || {};
-    const subBreakdown = q === 'needsVisit'
-      ? `P1: ${pc.p1||0} · P2: ${pc.p2||0} · P3: ${pc.p3||0}`
-      : `P2: ${pc.p2||0} · P3: ${pc.p3||0} · P4: ${pc.p4||0}`;
     return `
-      <div class="opp-card ${isEmpty?'disabled':''}" data-quad="${q}" onclick="${isEmpty?'':`selectPriorityQuad('${q}')`}" style="border-left:4px solid ${def.color}">
+      <div class="opp-card ${isEmpty?'disabled':''}" data-tahap="${t}" onclick="${isEmpty?'':`selectPriorityTahap('${t}')`}" style="border-left:4px solid ${def.color}">
         <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
         <div class="opp-count">${count}</div>
-        <div class="opp-sub">${escapeHtml(subBreakdown)}</div>
+        <div class="opp-sub">${escapeHtml(def.desc)}</div>
       </div>
     `;
   }).join('');
 }
-function selectPriorityQuad(q){
-  State.activePriorityQuad = (State.activePriorityQuad === q) ? null : q;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.quad === State.activePriorityQuad));
+function selectPriorityTahap(t){
+  State.activePriorityTahap = (State.activePriorityTahap === t) ? null : t;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.tahap === State.activePriorityTahap));
   renderPriorityTable();
 }
-window.selectPriorityQuad = selectPriorityQuad;
+window.selectPriorityTahap = selectPriorityTahap;
 function renderPriorityTable(){
   const q = ($('prioritySearch').value || '').toLowerCase().trim();
   let rows = State.priority.list;
-  if(State.activePriorityQuad) rows = rows.filter(r => r.quad === State.activePriorityQuad);
+  if(State.activePriorityTahap) rows = rows.filter(r => r.tahap === State.activePriorityTahap);
   if(q) rows = rows.filter(r => `${r.c.nama} ${r.c.cif} ${r.loan.noRekening}`.toLowerCase().includes(q));
-  const activeQuadLabel = State.activePriorityQuad ? ` · status: ${QUAD_DEFS[State.activePriorityQuad].label}` : '';
+  const activeTahapLabel = State.activePriorityTahap ? ` · status: ${TAHAP_DEFS[State.activePriorityTahap].label}` : '';
   const searchLabel = q ? ` · pencarian: "${escapeHtml(q)}"` : '';
-  $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeQuadLabel}${searchLabel}`;
+  $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeTahapLabel}${searchLabel}`;
   $('priorityBody').innerHTML = rows.map(r => `
     <tr>
       <td><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(r.c.cif)}')"><strong>${escapeHtml(r.c.nama)}</strong></a></td>
@@ -2726,7 +2820,7 @@ function renderPriorityTable(){
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
       <td class="num">${fmtDec(r.cov*100)}%</td>
       <td class="num">${r.dpkToLoan!=null ? fmtDec(r.dpkToLoan*100)+'%' : '-'}</td>
-      <td><span class="badge-pill ${PRIORITY_DEFS[r.priority].badgeCls}">${PRIORITY_DEFS[r.priority].label}</span></td>
+      <td><span class="badge-pill ${TAHAP_DEFS[r.tahap].badgeCls}">${TAHAP_DEFS[r.tahap].label}</span></td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
       <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
     </tr>
@@ -2736,26 +2830,35 @@ function renderPriorityTab(){
   computePriorityData();
   renderPriorityBasisCard();
   renderPriorityQuadGrid();
-  State.activePriorityQuad = null;
+  State.activePriorityTahap = null;
   renderPriorityTable();
-  $('badgePriority').textContent = State.priority.quadCounts.needsVisit;
+  $('badgePriority').textContent = (State.priority.tahapCounts.t6||0) + (State.priority.tahapCounts.t7||0);
   renderKpiDplCard(getScopedCustomers());
 }
 function renderPriorityBasisCard(){
   const p = State.priority;
+  const histNote = p.histDataAvailable
+    ? ''
+    : `<div class="rec-note" style="margin-top:10px"><strong>Catatan:</strong> file LW321 Historis (s.d. 6 bulan terakhir) belum diupload — kondisi "Histori Downgrade" dianggap "Tidak" sementara untuk semua fasilitas.</div>`;
+  const skippedNote = p.skippedNonRitel > 0
+    ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${p.skippedNonRitel} fasilitas di luar segmen Ritel (mis. konsumtif/KPR) tidak wajib DSRA — dilewati dari daftar ini.</div>`
+    : '';
   $('priorityBasisContent').innerHTML = `
-    <span class="label-tag">Threshold CASA to Loan</span>
-    <div class="cname" style="font-size:16px">Default: &lt; ${fmtDec(p.p25Cov*100)}%</div>
+    <span class="label-tag">Dasar Perhitungan Tahap Prioritas</span>
+    <div class="cname" style="font-size:16px">CASA to Loan tetap parameter utama, dikombinasikan dgn DSRA Memadai, Aktivitas Transaksi &amp; Histori Downgrade Kolektibilitas (6 bln terakhir) — NPD Bulan Berjalan menentukan tabel acuan.</div>
     <div class="customer-hero-grid" style="margin-top:10px">
-      <div><div class="f-label">Perlu Kunjungan</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.p25Cov*100)}%</div></div>
-      <div><div class="f-label">CASA Memadai</div><div class="f-value">CASA to Loan ≥ ${fmtDec(p.p25Cov*100)}%</div></div>
+      <div><div class="f-label">Kecukupan CASA</div><div class="f-value">Threshold ${fmtDec(p.covThreshold*100)}% (CASA to Loan)</div></div>
+      <div><div class="f-label">Aktivitas Transaksi</div><div class="f-value">Mutasi kredit ≥30x/bulan terakhir = Aktif</div></div>
+      <div><div class="f-label">NPD Bulan Berjalan</div><div class="f-value">Ada tagihan jatuh tempo bulan ini?</div></div>
+      <div><div class="f-label">DSRA &amp; Histori Downgrade</div><div class="f-value">Saldo DSRA vs kewajiban; kol memburuk 6 bln terakhir?</div></div>
     </div>
+    ${histNote}${skippedNote}
   `;
 }
 $('prioritySearch').addEventListener('input', renderPriorityTable);
 $('btnClearPriorityFilter').addEventListener('click', () => {
   $('prioritySearch').value = '';
-  State.activePriorityQuad = null;
+  State.activePriorityTahap = null;
   document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
   renderPriorityTable();
 });
@@ -2865,15 +2968,16 @@ function exportToExcel(){
     const priorityRows = (State.priority?.list || []).map(r => [
       r.c.nama, r.c.cif, r.loan.noRekening, r.c.uker, r.loan._baki, +(r.cov*100).toFixed(2),
       r.dpkToLoan!=null ? +(r.dpkToLoan*100).toFixed(2) : '',
-      QUAD_DEFS[r.quad].label,
+      r.casaMemadai ? 'Ya' : 'Tidak',
+      r.dsraMemadai ? 'Ya' : 'Tidak',
       r.aktivitasAktif ? 'Ya' : 'Tidak',
       r.npdBulanIni ? 'Ya' : 'Tidak',
-      r.dsraMemadai ? 'Ya' : 'Tidak',
-      PRIORITY_DEFS[r.priority].label,
+      r.histDowngrade ? 'Ya' : 'Tidak',
+      TAHAP_DEFS[r.tahap].label,
       cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')
     ]);
     const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)','DPK to Loan (%)',
-      'Status','Aktivitas Transaksi','NPD Bulan Berjalan','DSRA Memadai','Sub-Prioritas',
+      'CASA Memadai','DSRA Memadai','Aktivitas Transaksi','NPD Bulan Berjalan','Histori Downgrade','Tahap Prioritas',
       'RM Pengelola Pinjaman','RM Pengelola Simpanan'];
     const wsPriority = XLSX.utils.aoa_to_sheet([priorityHeader, ...priorityRows]);
     wsPriority['!cols'] = priorityHeader.map(h=>({wch:Math.max(14,h.length+2)}));
