@@ -679,11 +679,11 @@ table.data-table td.empty{text-align:center}
       <div class="panel">
         <div class="panel-header">
           <div>
-            <div class="panel-title">Prioritas Pengelolaan: Tahap 1–4 s.d. 1–7</div>
+            <div class="panel-title">Prioritas Pengelolaan</div>
           </div>
         </div>
         <div class="panel-body">
-          <div id="kpiDplCard" style="max-width:620px;margin-bottom:16px"></div>
+          <div id="kpiDplCard" style="margin-bottom:16px"></div>
           <div class="customer-hero" id="priorityBasisCard" style="padding:14px 20px;margin-bottom:18px">
             <div class="customer-hero-inner" id="priorityBasisContent"></div>
           </div>
@@ -695,13 +695,20 @@ table.data-table td.empty{text-align:center}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input class="input" id="prioritySearch" placeholder="Cari nama nasabah atau CIF...">
             </div>
+            <select class="select" id="priorityTahapFilter">
+              <option value="">Semua Tahap</option>
+              <option value="t7">Tahap 1–7</option>
+              <option value="t6">Tahap 1–6</option>
+              <option value="t5">Tahap 1–5</option>
+              <option value="t4">Tahap 1–4</option>
+            </select>
             <button class="btn btn-outline btn-sm no-print" id="btnClearPriorityFilter">Reset Pencarian &amp; Status</button>
             <span style="font-size:12px;color:var(--text-muted)" id="priorityCounter"></span>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="priorityTable">
               <thead><tr>
-                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th class="num">CASA to Loan</th><th class="num">DPK to Loan</th><th>Prioritas</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
+                <th>Nama Nasabah</th><th>No Rekening</th><th class="num">Baki Debet (OS)</th><th>Ketentuan</th><th>RTL</th><th>RM Pengelola Pinjaman</th><th>RM Pengelola Simpanan</th>
               </tr></thead>
               <tbody id="priorityBody"></tbody>
             </table>
@@ -757,7 +764,6 @@ const State = {
   oppCategories:null,
   priority:null,
   activePriorityTahap:null,
-  activePriorityGroup:null,
   priorityOverride:{os:null, cov:null},
   charts:{},
   diag:{},
@@ -2805,42 +2811,33 @@ function computePriorityData(){
     histDataAvailable: (State.lwHistSnapshots||[]).length > 0,
   };
 }
-// Grup gerbang utama (CASA to Loan) — persis 2 kelompok. "Perlu Tindak
-// Lanjut" (CASA <5%) dipecah lebih lanjut jadi sub-Tahap 1-5/1-6/1-7 sesuai
-// tabel; "CASA Memadai" (>=5%) flat, cuma Tahap 1-4, tidak dipecah lagi.
-const PRIORITY_GROUP_DEFS = {
-  needsAction: {label:'Perlu Tindak Lanjut', color:'#d64545', tahaps:['t7','t6','t5']},
-  casaMemadai: {label:'CASA Memadai',        color:'#0a9d6e', tahaps:['t4']},
-};
+// Ringkasan disederhanakan: 4 card flat, diurutkan sesuai urutan prioritas
+// RTL (Tahap 1-7 paling prioritas duluan, turun ke 1-4). Gerbang CASA to
+// Loan tetap menentukan tahap-nya di computePriorityData (Tahap 1-4 = CASA
+// Memadai, tidak dicek lebih lanjut), cuma tampilannya sekarang flat.
 function renderPriorityQuadGrid(){
   const {tahapCounts} = State.priority;
-  $('priorityQuadGrid').innerHTML = Object.keys(PRIORITY_GROUP_DEFS).map(g => {
-    const def = PRIORITY_GROUP_DEFS[g];
-    const count = def.tahaps.reduce((s,t)=>s+(tahapCounts[t]||0),0);
+  $('priorityQuadGrid').innerHTML = TAHAP_ORDER.map(t => {
+    const def = TAHAP_DEFS[t];
+    const count = tahapCounts[t] || 0;
     const isEmpty = count === 0;
-    const breakdown = def.tahaps.length > 1
-      ? def.tahaps.map(t => `<span class="badge-pill ${TAHAP_DEFS[t].badgeCls}" style="cursor:pointer" onclick="event.stopPropagation();selectPriorityTahap('${t}')">${escapeHtml(TAHAP_DEFS[t].label)}: ${tahapCounts[t]||0}</span>`).join(' ')
-      : `<span class="badge-pill ${TAHAP_DEFS[def.tahaps[0]].badgeCls}">${escapeHtml(TAHAP_DEFS[def.tahaps[0]].label)} · ${escapeHtml(TAHAP_DEFS[def.tahaps[0]].desc)}</span>`;
     return `
-      <div class="opp-card ${isEmpty?'disabled':''}" data-group="${g}" onclick="${isEmpty?'':`selectPriorityGroup('${g}')`}" style="border-left:4px solid ${def.color}">
+      <div class="opp-card ${isEmpty?'disabled':''}" data-tahap="${t}" onclick="${isEmpty?'':`selectPriorityTahap('${t}')`}" style="border-left:4px solid ${def.color}">
         <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
         <div class="opp-count">${count}</div>
-        <div class="opp-sub" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${breakdown}</div>
+        <div class="opp-sub">${escapeHtml(def.desc)}</div>
       </div>
     `;
   }).join('');
 }
-function selectPriorityGroup(g){
-  State.activePriorityGroup = (State.activePriorityGroup === g) ? null : g;
-  State.activePriorityTahap = null;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.group === State.activePriorityGroup));
-  renderPriorityTable();
+function syncPriorityTahapFilterUI(){
+  const sel = $('priorityTahapFilter');
+  if(sel) sel.value = State.activePriorityTahap || '';
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.tahap === State.activePriorityTahap));
 }
-window.selectPriorityGroup = selectPriorityGroup;
 function selectPriorityTahap(t){
   State.activePriorityTahap = (State.activePriorityTahap === t) ? null : t;
-  State.activePriorityGroup = null;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
+  syncPriorityTahapFilterUI();
   renderPriorityTable();
 }
 window.selectPriorityTahap = selectPriorityTahap;
@@ -2851,10 +2848,6 @@ function renderPriorityTable(){
   if(State.activePriorityTahap){
     rows = rows.filter(r => r.tahap === State.activePriorityTahap);
     activeTahapLabel = ` · status: ${TAHAP_DEFS[State.activePriorityTahap].label}`;
-  } else if(State.activePriorityGroup){
-    const tahaps = PRIORITY_GROUP_DEFS[State.activePriorityGroup].tahaps;
-    rows = rows.filter(r => tahaps.includes(r.tahap));
-    activeTahapLabel = ` · status: ${PRIORITY_GROUP_DEFS[State.activePriorityGroup].label}`;
   }
   if(q) rows = rows.filter(r => `${r.c.nama} ${r.c.cif} ${r.loan.noRekening}`.toLowerCase().includes(q));
   const searchLabel = q ? ` · pencarian: "${escapeHtml(q)}"` : '';
@@ -2864,20 +2857,47 @@ function renderPriorityTable(){
       <td><a class="cust-link" href="javascript:void(0)" onclick="goToCustomerDetail('${escapeHtml(r.c.cif)}')"><strong>${escapeHtml(r.c.nama)}</strong></a></td>
       <td>${escapeHtml(r.loan.noRekening)}</td>
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
-      <td class="num">${fmtDec(r.cov*100)}%</td>
-      <td class="num">${r.dpkToLoan!=null ? fmtDec(r.dpkToLoan*100)+'%' : '-'}</td>
+      <td><button class="btn btn-outline btn-sm no-print" onclick="showPriorityKetentuanModal('${escapeHtml(r.c.cif)}','${escapeHtml(r.loan.noRekening)}')">Lihat Ketentuan</button></td>
       <td><span class="badge-pill ${TAHAP_DEFS[r.tahap].badgeCls}">${TAHAP_DEFS[r.tahap].label}</span></td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
       <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
     </tr>
-  `).join('') || '<tr><td colspan="8" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
+  `).join('') || '<tr><td colspan="7" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
 }
+// Popup "Ketentuan" — detail indikator yg dipakai utk menentukan RTL/Tahap
+// fasilitas ini (dipanggil dari tombol di tabel Prioritas Pengelolaan).
+// Reuse modal rekening koran (rkModal*) supaya tidak perlu bikin modal baru.
+function showPriorityKetentuanModal(cif, noRekening){
+  const r = (State.priority?.list || []).find(x => x.c.cif === cif && x.loan.noRekening === noRekening);
+  if(!r){ showToast('Detail ketentuan fasilitas ini tidak ditemukan.', 'error'); return; }
+  const yn = v => v ? 'Ya' : 'Tidak';
+  const items = [
+    {label:'CASA Memadai (gerbang utama, CASA to Loan ≥ threshold)', value: yn(r.casaMemadai)},
+    {label:'DSRA Memadai', value: yn(r.dsraMemadai)},
+    {label:'Aktivitas Transaksi (mutasi kredit ≥30x bulan terakhir)', value: yn(r.aktivitasAktif)},
+    {label:'NPD Bulan Berjalan', value: yn(r.npdBulanIni)},
+    {label:'Histori Downgrade Kolektibilitas (6 bln terakhir)', value: yn(r.histDowngrade)},
+  ];
+  const skipNote = r.casaMemadai
+    ? `<div class="rec-note" style="margin-top:10px">CASA sudah memadai → fasilitas ini otomatis ${TAHAP_DEFS.t4.label} (${TAHAP_DEFS.t4.desc}); 4 indikator lain di atas tidak memengaruhi Tahap-nya.</div>`
+    : '';
+  $('rkModalTitle').textContent = r.c.nama || '(tanpa nama)';
+  $('rkModalSub').textContent = `CIF ${r.c.cif} · No Rekening ${r.loan.noRekening} · ${TAHAP_DEFS[r.tahap].label} — ${TAHAP_DEFS[r.tahap].desc}`;
+  $('rkModalBody').innerHTML = `
+    <div class="detail-grid detail-grid-single" style="margin-top:4px">
+      ${items.map(x => `<div><div class="f-label">${escapeHtml(x.label)}</div><div class="f-value">${escapeHtml(x.value)}</div></div>`).join('')}
+    </div>
+    ${skipNote}
+  `;
+  $('rkModalOverlay').classList.add('show');
+}
+window.showPriorityKetentuanModal = showPriorityKetentuanModal;
 function renderPriorityTab(){
   computePriorityData();
   renderPriorityBasisCard();
   renderPriorityQuadGrid();
   State.activePriorityTahap = null;
-  State.activePriorityGroup = null;
+  syncPriorityTahapFilterUI();
   renderPriorityTable();
   const {tahapCounts} = State.priority;
   $('badgePriority').textContent = (tahapCounts.t5||0) + (tahapCounts.t6||0) + (tahapCounts.t7||0);
@@ -2911,11 +2931,15 @@ function renderPriorityBasisCard(){
   `;
 }
 $('prioritySearch').addEventListener('input', renderPriorityTable);
+$('priorityTahapFilter').addEventListener('change', () => {
+  State.activePriorityTahap = $('priorityTahapFilter').value || null;
+  syncPriorityTahapFilterUI();
+  renderPriorityTable();
+});
 $('btnClearPriorityFilter').addEventListener('click', () => {
   $('prioritySearch').value = '';
   State.activePriorityTahap = null;
-  State.activePriorityGroup = null;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
+  syncPriorityTahapFilterUI();
   renderPriorityTable();
 });
 /* ===================================================================
