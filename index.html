@@ -757,6 +757,7 @@ const State = {
   oppCategories:null,
   priority:null,
   activePriorityTahap:null,
+  activePriorityGroup:null,
   priorityOverride:{os:null, cov:null},
   charts:{},
   diag:{},
@@ -2773,7 +2774,7 @@ function computePriorityData(){
       // CASA to Loan (<5%) tetap gerbang MUTLAK di awal. Kalau CASA sudah
       // memadai (>=5%), fasilitas otomatis Tahap 1-4 (Monitoring) — 4
       // indikator lain (DSRA, Trx, NPD, Hist Downgrade) TIDAK dicek lagi.
-      // Cuma fasilitas yg CASA-nya < 5% ("Perlu RTL") yg lanjut dicek 4
+      // Cuma fasilitas yg CASA-nya < 5% ("Perlu Tindak Lanjut") yg lanjut dicek 4
       // indikator itu & di-lookup ke salah satu dari 2 tabel 16-kombinasi
       // (NPD Bulan Berjalan menentukan tabel mana; kolom CASA di tabel itu
       // otomatis "Tidak" krn memang cuma dipakai utk kelompok ini).
@@ -2804,33 +2805,58 @@ function computePriorityData(){
     histDataAvailable: (State.lwHistSnapshots||[]).length > 0,
   };
 }
+// Grup gerbang utama (CASA to Loan) — persis 2 kelompok. "Perlu Tindak
+// Lanjut" (CASA <5%) dipecah lebih lanjut jadi sub-Tahap 1-5/1-6/1-7 sesuai
+// tabel; "CASA Memadai" (>=5%) flat, cuma Tahap 1-4, tidak dipecah lagi.
+const PRIORITY_GROUP_DEFS = {
+  needsAction: {label:'Perlu Tindak Lanjut', color:'#d64545', tahaps:['t7','t6','t5']},
+  casaMemadai: {label:'CASA Memadai',        color:'#0a9d6e', tahaps:['t4']},
+};
 function renderPriorityQuadGrid(){
   const {tahapCounts} = State.priority;
-  $('priorityQuadGrid').innerHTML = TAHAP_ORDER.map(t => {
-    const def = TAHAP_DEFS[t];
-    const count = tahapCounts[t] || 0;
+  $('priorityQuadGrid').innerHTML = Object.keys(PRIORITY_GROUP_DEFS).map(g => {
+    const def = PRIORITY_GROUP_DEFS[g];
+    const count = def.tahaps.reduce((s,t)=>s+(tahapCounts[t]||0),0);
     const isEmpty = count === 0;
+    const breakdown = def.tahaps.length > 1
+      ? def.tahaps.map(t => `<span class="badge-pill ${TAHAP_DEFS[t].badgeCls}" style="cursor:pointer" onclick="event.stopPropagation();selectPriorityTahap('${t}')">${escapeHtml(TAHAP_DEFS[t].label)}: ${tahapCounts[t]||0}</span>`).join(' ')
+      : `<span class="badge-pill ${TAHAP_DEFS[def.tahaps[0]].badgeCls}">${escapeHtml(TAHAP_DEFS[def.tahaps[0]].label)} · ${escapeHtml(TAHAP_DEFS[def.tahaps[0]].desc)}</span>`;
     return `
-      <div class="opp-card ${isEmpty?'disabled':''}" data-tahap="${t}" onclick="${isEmpty?'':`selectPriorityTahap('${t}')`}" style="border-left:4px solid ${def.color}">
+      <div class="opp-card ${isEmpty?'disabled':''}" data-group="${g}" onclick="${isEmpty?'':`selectPriorityGroup('${g}')`}" style="border-left:4px solid ${def.color}">
         <div class="opp-icon" style="background:${def.color};color:#fff">${escapeHtml(def.label)}</div>
         <div class="opp-count">${count}</div>
-        <div class="opp-sub">${escapeHtml(def.desc)}</div>
+        <div class="opp-sub" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${breakdown}</div>
       </div>
     `;
   }).join('');
 }
+function selectPriorityGroup(g){
+  State.activePriorityGroup = (State.activePriorityGroup === g) ? null : g;
+  State.activePriorityTahap = null;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.group === State.activePriorityGroup));
+  renderPriorityTable();
+}
+window.selectPriorityGroup = selectPriorityGroup;
 function selectPriorityTahap(t){
   State.activePriorityTahap = (State.activePriorityTahap === t) ? null : t;
-  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.toggle('active', el.dataset.tahap === State.activePriorityTahap));
+  State.activePriorityGroup = null;
+  document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
   renderPriorityTable();
 }
 window.selectPriorityTahap = selectPriorityTahap;
 function renderPriorityTable(){
   const q = ($('prioritySearch').value || '').toLowerCase().trim();
   let rows = State.priority.list;
-  if(State.activePriorityTahap) rows = rows.filter(r => r.tahap === State.activePriorityTahap);
+  let activeTahapLabel = '';
+  if(State.activePriorityTahap){
+    rows = rows.filter(r => r.tahap === State.activePriorityTahap);
+    activeTahapLabel = ` · status: ${TAHAP_DEFS[State.activePriorityTahap].label}`;
+  } else if(State.activePriorityGroup){
+    const tahaps = PRIORITY_GROUP_DEFS[State.activePriorityGroup].tahaps;
+    rows = rows.filter(r => tahaps.includes(r.tahap));
+    activeTahapLabel = ` · status: ${PRIORITY_GROUP_DEFS[State.activePriorityGroup].label}`;
+  }
   if(q) rows = rows.filter(r => `${r.c.nama} ${r.c.cif} ${r.loan.noRekening}`.toLowerCase().includes(q));
-  const activeTahapLabel = State.activePriorityTahap ? ` · status: ${TAHAP_DEFS[State.activePriorityTahap].label}` : '';
   const searchLabel = q ? ` · pencarian: "${escapeHtml(q)}"` : '';
   $('priorityCounter').textContent = `Menampilkan ${rows.length} dari ${State.priority.list.length} fasilitas${activeTahapLabel}${searchLabel}`;
   $('priorityBody').innerHTML = rows.map(r => `
@@ -2851,8 +2877,10 @@ function renderPriorityTab(){
   renderPriorityBasisCard();
   renderPriorityQuadGrid();
   State.activePriorityTahap = null;
+  State.activePriorityGroup = null;
   renderPriorityTable();
-  $('badgePriority').textContent = (State.priority.tahapCounts.t6||0) + (State.priority.tahapCounts.t7||0);
+  const {tahapCounts} = State.priority;
+  $('badgePriority').textContent = (tahapCounts.t5||0) + (tahapCounts.t6||0) + (tahapCounts.t7||0);
   renderKpiDplCard(getScopedCustomers());
 }
 function renderPriorityBasisCard(){
@@ -2865,9 +2893,9 @@ function renderPriorityBasisCard(){
     : '';
   $('priorityBasisContent').innerHTML = `
     <span class="label-tag">Dasar Perhitungan Tahap Prioritas</span>
-    <div class="cname" style="font-size:16px">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% tetap gerbang MUTLAK di awal ("Perlu RTL"). Fasilitas dgn CASA to Loan ≥ ${fmtDec(p.covThreshold*100)}% ("CASA Memadai") otomatis Tahap 1–4, tidak dicek lebih lanjut. Cuma fasilitas Perlu RTL yg lanjut dicek 4 indikator lain (DSRA Memadai, Aktivitas Transaksi, NPD Bulan Berjalan, Histori Downgrade) utk menentukan Tahap 1–5/1–6/1–7 sesuai tabel.</div>
+    <div class="cname" style="font-size:16px">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% tetap gerbang MUTLAK di awal ("Perlu Tindak Lanjut"). Fasilitas dgn CASA to Loan ≥ ${fmtDec(p.covThreshold*100)}% ("CASA Memadai") otomatis Tahap 1–4, tidak dicek lebih lanjut. Cuma fasilitas Perlu Tindak Lanjut yg lanjut dicek 4 indikator lain (DSRA Memadai, Aktivitas Transaksi, NPD Bulan Berjalan, Histori Downgrade) utk menentukan Tahap 1–5/1–6/1–7 sesuai tabel.</div>
     <div class="customer-hero-grid" style="margin-top:10px">
-      <div><div class="f-label">1. Kecukupan CASA (gerbang utama)</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% = Perlu RTL; ≥ ${fmtDec(p.covThreshold*100)}% = CASA Memadai (langsung Tahap 1-4)</div></div>
+      <div><div class="f-label">1. Kecukupan CASA (gerbang utama)</div><div class="f-value">CASA to Loan &lt; ${fmtDec(p.covThreshold*100)}% = Perlu Tindak Lanjut; ≥ ${fmtDec(p.covThreshold*100)}% = CASA Memadai (langsung Tahap 1-4)</div></div>
       <div><div class="f-label">2. Aktivitas Transaksi</div><div class="f-value">Mutasi kredit ≥30x/bulan terakhir = Aktif</div></div>
       <div><div class="f-label">3. NPD Bulan Berjalan</div><div class="f-value">Ada tagihan jatuh tempo bulan ini? (menentukan tabel acuan)</div></div>
       <div><div class="f-label">4. DSRA &amp; Histori Downgrade</div><div class="f-value">Saldo DSRA vs kewajiban; kol memburuk 6 bln terakhir? (Kol 1 Restruk dihitung lebih berat dari Kol 1 murni)</div></div>
@@ -2886,6 +2914,7 @@ $('prioritySearch').addEventListener('input', renderPriorityTable);
 $('btnClearPriorityFilter').addEventListener('click', () => {
   $('prioritySearch').value = '';
   State.activePriorityTahap = null;
+  State.activePriorityGroup = null;
   document.querySelectorAll('#priorityQuadGrid .opp-card').forEach(el => el.classList.remove('active'));
   renderPriorityTable();
 });
