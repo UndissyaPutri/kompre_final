@@ -736,6 +736,8 @@ const $ = id => document.getElementById(id);
 const SLOTS = [
   {key:'LW321', title:'LW321, Pinjaman', required:true, ext:'.xlsx', match:['LW321','PINJAMAN'],
    desc:'Key utama dashboard: kolektibilitas, plafon, baki debet, CIF.'},
+  {key:'MASTER_PN', title:'Master PN Pemasar (DI319)', required:false, ext:'.xlsx', match:['DI319','MASTER PN','MASTER_PN','PN PEMASAR'],
+   desc:'Opsional — report DI319 (Savings Account Monthly Trial Balance - Multi PN). Semua kolom "PN ..." di file ini sudah berformat "kode - nama", dipakai sebagai lookup supaya kode PN yang polos tanpa nama di tempat lain (mis. RM Pengelola Simpanan/RM FT) bisa ditampilkan dengan namanya. Dicek lebih dulu dari slot Simpanan di bawah supaya nama file yg mengandung "DI319" tidak salah kedeteksi sbg file Simpanan biasa.'},
   {key:'DI_SIMPANAN', title:'Simpanan (Tabungan, Giro & Deposito), Multi PN by CIF', required:false, ext:'.xlsx', match:['MULTIPN','MULTI PN','MULTI_PN','SIMPANAN'],
    desc:'Rekening tabungan, giro & deposito, lookup by CIF. Saldo pakai Ratas Saldo Marginal by CIF, sudah mencakup rekening di luar KC/unit kerja.'},
   {key:'EDC', title:'Merchant EDC', required:false, ext:'.csv', match:['EDC'],
@@ -755,6 +757,7 @@ const State = {
   raw:{},          // key -> parsed array of row objects
   lwHistSnapshots:[], // {fileName, dateGuess, _uploadSeq, rows} — snapshot LW321 bulan-bulan sebelumnya, utk cek downgrade kolektibilitas
   lwHistUploadSeq:0,
+  pnNameMap:new Map(), // kode PN (string) -> nama pegawai, dari file Master PN Pemasar (DI319)
   customers:new Map(), // cif -> customer object (full, unfiltered universe)
   globalFilter:{kanwil:'', kanca:'', uker:'', rm:'', rmFt:''}, // scope selected by top filter bar
   filteredCust:[],
@@ -885,6 +888,21 @@ const combinePn = (a, b) => {
   if(pa==='-') return pb;
   return pa + ' - ' + pb;
 };
+// Tampilkan kode PN sbg "kode - nama" kalau namanya ketemu di lookup Master
+// PN Pemasar (file DI319, opsional). Kalau raw value-nya sendiri udah
+// "kode - nama" (mis. PN PENGELOLA SINGLEPN di LW321 yg sumbernya emang udah
+// digabung), dibiarkan apa adanya. Kalau kode-nya gak ketemu di lookup
+// (belum upload DI319, atau kodenya gak ada di file itu), tetap tampil kode
+// polos spt sebelumnya — tidak ada perubahan perilaku.
+const pnDisplay = v => {
+  const s = cleanPn(v);
+  if(s === '-' || !s) return '-';
+  if(s.includes(' - ')) return s;
+  const code = s.replace(/\D/g,'');
+  if(code && State.pnNameMap && State.pnNameMap.has(code)) return `${s} - ${State.pnNameMap.get(code)}`;
+  return s;
+};
+window.pnDisplay = pnDisplay;
 const normHeader = h => cleanStr(h).toUpperCase();
 // Sort abjad (case-insensitive, angka di dalam nama/kode diurutkan
 // numerik) — dipakai utk dropdown filter RM Pengelola biar urutannya jelas.
@@ -935,6 +953,35 @@ function buildRows(aoa, headerRowIdx, fieldMap, keyField){
     out.push(obj);
   }
   return out;
+}
+// File Master PN Pemasar (DI319) — bukan data per-nasabah spt file lain,
+// cuma dipakai sbg lookup kode PN -> nama pegawai. Header row-nya dideteksi
+// dgn cari baris yg punya >=2 kolom berawalan "PN " (mis. "PN RM Dana/Mantri",
+// "PN RM Pinjaman", dst — semuanya berisi value format "kode - nama").
+function buildPnNameMapFromAoa(aoa){
+  let hdrIdx = -1, pnCols = [];
+  for(let i=0; i<Math.min(aoa.length, 30); i++){
+    const row = aoa[i] || [];
+    const cols = [];
+    row.forEach((h, idx) => {
+      const nh = normHeader(h);
+      if(nh && (nh.startsWith('PN ') || nh === 'PN')) cols.push(idx);
+    });
+    if(cols.length >= 2){ hdrIdx = i; pnCols = cols; break; }
+  }
+  if(hdrIdx < 0) throw new Error('Kolom "PN ..." tidak ditemukan pada file ini — pastikan ini file Master PN Pemasar (DI319) yang benar.');
+  const map = new Map();
+  for(let r=hdrIdx+1; r<aoa.length; r++){
+    const row = aoa[r];
+    if(!row) continue;
+    pnCols.forEach(idx => {
+      const raw = row[idx];
+      if(typeof raw !== 'string') return;
+      const m = raw.match(/^\s*(\d{4,})\s*-\s*(.+?)\s*$/);
+      if(m) map.set(m[1], m[2].trim());
+    });
+  }
+  return map;
 }
 /* ===================================================================
    FIELD MAPS
@@ -1128,6 +1175,10 @@ async function parseFileForSlot(key, file){
   if(key === 'PRODUCT_HOLDING'){
     const {aoa, merges} = await readXlsxAsAOAWithMerges(file);
     return parseProductHoldingAOA(aoa, merges);
+  }
+  if(key === 'MASTER_PN'){
+    const aoa = file.name.toLowerCase().endsWith('.csv') ? await readDelimitedAsAOA(file, '|') : await readXlsxAsAOA(file);
+    return buildPnNameMapFromAoa(aoa);
   }
   const cfg = PARSERS[key];
   let aoa;
@@ -1431,6 +1482,27 @@ function assignFileToSlot(key, file){
       statusEl.className = 'slot-status ok';
       statusEl.textContent = `✓ ${State.fileNames[key].length} file snapshot bulanan terbaca${anyUndated ? ' (sebagian nama file tanpa tanggal, urutan pakai urutan upload)' : ''}`;
       card.classList.add('filled');
+      updateProcessButton();
+    }).catch(err => {
+      statusEl.className = 'slot-status err';
+      statusEl.textContent = `✗ Gagal membaca file ${file.name}: ${err.message}`;
+      updateProcessButton();
+    });
+    return;
+  }
+  if(key === 'MASTER_PN'){
+    statusEl.textContent = `⏳ Memvalidasi ${file.name}...`;
+    card.classList.remove('filled');
+    parseFileForSlot(key, file).then(map => {
+      State.pnNameMap = map;
+      State.fileNames[key] = [file.name];
+      statusEl.className = 'slot-status ok';
+      statusEl.textContent = `✓ ${file.name}, ${map.size.toLocaleString('id-ID')} kode PN terpetakan`;
+      card.classList.add('filled');
+      // Nama RM langsung ke-refresh di tabel/tab yg lagi kebuka, tanpa perlu
+      // klik "Proses Data" ulang.
+      if(State.priority) renderPriorityTable();
+      if(typeof renderRmPairingTable === 'function' && document.getElementById('rmPairingBody')) renderRmPairingTable();
       updateProcessButton();
     }).catch(err => {
       statusEl.className = 'slot-status err';
@@ -2540,7 +2612,7 @@ function selectOpp(k, resetPinjamanPage=true){
           <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(p.ukerCode || '-')}</span></div>
           <div class="detail-field"><span class="lbl">Total Saldo</span><span class="val">${fmtRupiah(p.saldo)}</span></div>
           ${rows}
-          <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((p.rmFt && p.rmFt.length) ? p.rmFt.join(', ') : '-')}</span></div>
+          <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((p.rmFt && p.rmFt.length) ? p.rmFt.map(pnDisplay).join(', ') : '-')}</span></div>
         </div>
         <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(p.cif)}')">Lihat Rekening Koran</button>
         ${buildProspectOppNote(p, k)}
@@ -2573,7 +2645,7 @@ function selectOpp(k, resetPinjamanPage=true){
         <div class="detail-field"><span class="lbl">Unit Kerja</span><span class="val">${escapeHtml(c.uker)}</span></div>
         <div class="detail-field"><span class="lbl">Baki Debet</span><span class="val">${fmtRupiah(c.totalBakiDebet)}</span></div>
         <div class="detail-field"><span class="lbl">Total Funding</span><span class="val">${fmtRupiah(c.totalFunding)}</span></div>
-        <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((c.rmFundingList && c.rmFundingList.length) ? c.rmFundingList.join(', ') : '-')}</span></div>
+        <div class="detail-field detail-field-wide"><span class="lbl">RM Pengelola Simpanan</span><span class="val">${escapeHtml((c.rmFundingList && c.rmFundingList.length) ? c.rmFundingList.map(pnDisplay).join(', ') : '-')}</span></div>
         <div class="detail-field"><span class="lbl">RM Pengelola Pinjaman</span><span class="val">${escapeHtml(cleanPn(c.loans[0]?.pnPengelola))}</span></div>
       </div>
       <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="showRekeningKoranModal('${escapeHtml(c.cif)}')">Lihat Rekening Koran</button>
@@ -3009,9 +3081,9 @@ function renderPriorityTable(){
       <td>${escapeHtml(r.loan.noRekening)}</td>
       <td class="num">${fmtRupiah(r.loan._baki)}</td>
       <td><button class="btn btn-outline btn-sm no-print" onclick="showPriorityKetentuanModal('${escapeHtml(r.c.cif)}','${escapeHtml(r.loan.noRekening)}')">Lihat</button></td>
-      <td><span class="badge-pill ${TAHAP_DEFS[r.tahap].badgeCls}">${TAHAP_DEFS[r.tahap].label}</span></td>
+      <td><span class="badge-pill ${TAHAP_DEFS[r.tahap].badgeCls}" style="cursor:pointer" onclick="showJourneyActionPlanModal('${r.tahap}')" title="Lihat Journey &amp; Action Plan">${TAHAP_DEFS[r.tahap].label}</span></td>
       <td>${escapeHtml(cleanPn(r.loan.pnPengelola))}</td>
-      <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')}</td>
+      <td>${escapeHtml(r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.map(pnDisplay).join(', ') : '-')}</td>
     </tr>
   `).join('') || '<tr><td colspan="7" class="empty">Tidak ada fasilitas yang cocok.</td></tr>';
 }
@@ -3163,7 +3235,7 @@ function renderRmPairingTable(){
     <tr>
       <td class="num">${i+1}</td>
       <td>${escapeHtml(r.rmSme)}</td>
-      <td>${escapeHtml(r.rmFt)}</td>
+      <td>${escapeHtml(pnDisplay(r.rmFt))}</td>
       <td class="num">${fmtNum(r.count)}</td>
       <td class="num">${fmtRupiah(r.os)}</td>
     </tr>
@@ -3202,7 +3274,7 @@ function exportToExcel(){
       r.npdBulanIni ? 'Ya' : 'Tidak',
       r.histDowngrade ? 'Ya' : 'Tidak',
       TAHAP_DEFS[r.tahap].label,
-      cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.join(', ') : '-')
+      cleanPn(r.loan.pnPengelola), (r.c.rmFundingList && r.c.rmFundingList.length ? r.c.rmFundingList.map(pnDisplay).join(', ') : '-')
     ]);
     const priorityHeader = ['Nama Nasabah','CIF','No Rekening','Unit Kerja','Baki Debet','CASA to Loan (%)','DPK to Loan (%)',
       'CASA Memadai','DSRA Memadai','Aktivitas Transaksi','NPD Bulan Berjalan','Histori Downgrade','Tahap Prioritas',
