@@ -772,14 +772,29 @@ const State = {
   charts:{},
   diag:{},
 };
+// Kanwil (Regional Office) > Kanca (Branch Office) > Uker (Unit Kerja)
+// adalah hierarki bertingkat, tapi teks label di ketiga kolom itu (hasil
+// join dari LW321 & file Simpanan) kadang tidak identik persis untuk baris
+// yg sama, khususnya untuk kantor cabang yg Uker-nya sendiri = kantor
+// cabang itu sendiri (bukan KCP). Kalau ketiganya di-AND exact-match
+// sekaligus, kombinasi "BO=X + Uker=X" bisa gagal cocok padahal "Uker=X"
+// doang berhasil (krn field kanca & uker beda ejaan walau merujuk kantor
+// yg sama). Makanya dipakai aturan "yg paling spesifik menang": kalau Uker
+// sudah diisi, itu aja yg dipakai buat scoping (Kanca/Kanwil diabaikan,
+// krn Uker sudah pasti turunan dari Kanca/Kanwil yg benar); kalau Uker
+// kosong tapi Kanca diisi, pakai Kanca; dst.
+function matchesBranchScope(entity, filter){
+  if(filter.uker) return entity.uker === filter.uker;
+  if(filter.kanca) return entity.kanca === filter.kanca;
+  if(filter.kanwil) return entity.kanwil === filter.kanwil;
+  return true;
+}
 function getScopedCustomers(){
   const key = (State.customersVersion||0) + '|' + JSON.stringify(State.globalFilter);
   if(State._scopedCache && State._scopedCacheKey === key) return State._scopedCache;
   let list = [...State.customers.values()];
-  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
-  if(kanwil) list = list.filter(c => c.kanwil === kanwil);
-  if(kanca) list = list.filter(c => c.kanca === kanca);
-  if(uker) list = list.filter(c => c.uker === uker);
+  const {rm, rmFt} = State.globalFilter;
+  list = list.filter(c => matchesBranchScope(c, State.globalFilter));
   if(rm) list = list.filter(c => c.rmPengelola === rm);
   if(rmFt) list = list.filter(c => (c.rmFundingList||[]).some(code => rmFtEntryMatches(code, rmFt)));
   State._scopedCache = list;
@@ -834,11 +849,9 @@ function findPairedRmSme(rmFtValue){
   return pair ? pair.rmSme : null;
 }
 function getOppScopedCustomers(){
-  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
+  const {rm, rmFt} = State.globalFilter;
   let list = [...State.customers.values()];
-  if(kanwil) list = list.filter(c => c.kanwil === kanwil);
-  if(kanca) list = list.filter(c => c.kanca === kanca);
-  if(uker) list = list.filter(c => c.uker === uker);
+  list = list.filter(c => matchesBranchScope(c, State.globalFilter));
   if(rm) list = list.filter(c => c.rmPengelola === rm);
   if(rmFt){
     const pairedSme = findPairedRmSme(rmFt);
@@ -851,10 +864,8 @@ function getOppScopedCustomers(){
 }
 function getScopedFundingOnlyProspects(){
   let list = State.fundingOnlyProspects || [];
-  const {kanwil, kanca, uker, rm, rmFt} = State.globalFilter;
-  if(kanwil) list = list.filter(p => p.kanwil === kanwil);
-  if(kanca) list = list.filter(p => p.kanca === kanca);
-  if(uker) list = list.filter(p => p.uker === uker);
+  const {rm, rmFt} = State.globalFilter;
+  list = list.filter(p => matchesBranchScope(p, State.globalFilter));
   if(rm){
     const pairedFt = findPairedRmFt(rm);
     list = pairedFt ? list.filter(p => p.rmFundingList && p.rmFundingList.some(code => rmFtEntryMatches(code, pairedFt))) : [];
