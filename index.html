@@ -1633,11 +1633,32 @@ function buildCustomers(){
   // per uker). Diisi dari kolom "Ratas Saldo Marginal by CIF"/"...by CIF
   // Uker" saat ingest DI_SIMPANAN di bawah.
   const casaByCifMap = new Map();
+  // Selain ukerCodeMap (per KODE_UKER), bikin juga kancaCodeMap & kanwilCodeMap
+  // (per KODE_KANCA/KODE_KANWIL) dari LW321 — dipakai sbg fallback resolusi
+  // label Kanca/Kanwil yg KONSISTEN utk prospek funding-only (dari file
+  // Simpanan) yg kode uker-nya sendiri (mis. KCP tanpa fasilitas kredit
+  // aktif) tidak ketemu di LW321. Tanpa ini, prospek KCP semacam itu bisa
+  // ke-tag pakai label Kantor Cabang mentah dari file Simpanan yg beda
+  // penulisan/casing dgn label LW321 (mis. "KC BRIGSU" vs penulisan lain di
+  // file Simpanan) — bikin filter "Branch Office" gak nemu mereka meskipun
+  // secara hierarki mereka di bawah cabang yg sama (KC-nya membawahi
+  // beberapa KCP, semua nasabahnya harusnya ke-agregat kalau difilter per
+  // Kanca/Branch Office).
   const ukerCodeMap = new Map();
+  const kancaCodeMap = new Map();
+  const kanwilCodeMap = new Map();
   loanRows.forEach(row => {
     const code = cleanStr(row.kodeUker);
     if(code && !ukerCodeMap.has(code)){
       ukerCodeMap.set(code, {kanwil:cleanStr(row.kanwil), kanca:cleanStr(row.kanca), uker:cleanStr(row.uker)||cleanStr(row.kanca)});
+    }
+    const kancaCode = cleanStr(row.kodeKanca);
+    if(kancaCode && !kancaCodeMap.has(kancaCode)){
+      kancaCodeMap.set(kancaCode, {kanwil:cleanStr(row.kanwil), kanca:cleanStr(row.kanca)});
+    }
+    const kanwilCode = cleanStr(row.kodeKanwil);
+    if(kanwilCode && !kanwilCodeMap.has(kanwilCode)){
+      kanwilCodeMap.set(kanwilCode, cleanStr(row.kanwil));
     }
   });
   const prospectMap = new Map();
@@ -1649,8 +1670,21 @@ function buildCustomers(){
     if(!p.ukerCode && ukerCode){
       p.ukerCode = ukerCode;
       const branch = ukerCodeMap.get(ukerCode);
-      if(branch){ p.kanwil = branch.kanwil; p.kanca = branch.kanca; p.uker = branch.uker; }
-      else if(directBranch){ p.kanwil = directBranch.kanwil || p.kanwil; p.kanca = directBranch.kanca || p.kanca; p.uker = directBranch.uker || p.uker; }
+      if(branch){
+        p.kanwil = branch.kanwil; p.kanca = branch.kanca; p.uker = branch.uker;
+      } else if(directBranch){
+        // Kode uker prospek ini tidak ketemu di LW321 (kemungkinan KCP tanpa
+        // fasilitas kredit aktif) — coba dulu resolusi Kanca/Kanwil-nya lewat
+        // kode (konsisten dgn nasabah pinjaman di cabang yg sama), baru
+        // fallback ke label mentah dari file Simpanan kalau kodenya juga
+        // tidak ketemu di LW321 (artinya seluruh cabang itu memang tidak
+        // punya nasabah pinjaman sama sekali di LW321 ini).
+        const kancaBranch = directBranch.kancaCode ? kancaCodeMap.get(directBranch.kancaCode) : null;
+        const kanwilLabel = directBranch.kanwilCode ? kanwilCodeMap.get(directBranch.kanwilCode) : null;
+        p.kanwil = kanwilLabel || (kancaBranch && kancaBranch.kanwil) || directBranch.kanwil || p.kanwil;
+        p.kanca = (kancaBranch && kancaBranch.kanca) || directBranch.kanca || p.kanca;
+        p.uker = directBranch.uker || p.uker;
+      }
     }
     return p;
   }
@@ -1690,7 +1724,7 @@ function buildCustomers(){
     const ukerSplit = splitCodeLabel(row.ukerLabel);
     const kancaSplit = splitCodeLabel(row.kancaLabel);
     const kanwilSplit = splitCodeLabel(row.regionalOffice);
-    const directBranch = {kanwil:kanwilSplit.label, kanca:kancaSplit.label, uker:ukerSplit.label};
+    const directBranch = {kanwil:kanwilSplit.label, kanca:kancaSplit.label, uker:ukerSplit.label, kancaCode:kancaSplit.code, kanwilCode:kanwilSplit.code};
     if(customers.has(cif)){
       if(jenis === 'TABUNGAN') customers.get(cif).tabungan.push(row);
       else if(jenis === 'GIRO') customers.get(cif).giro.push(row);
@@ -2141,76 +2175,14 @@ window.goToCustomerDetail = goToCustomerDetail;
 /* ===================================================================
    RENDER: CUSTOMER DETAIL (Profil Nasabah)
    ================================================================= */
-function buildPipelineNearMissNote(c){
-  const ev = c.pipelineEval;
-  if(!ev || !ev.monthsCovered) return null;
-  const T = PIPELINE_THRESHOLDS;
-  const hasActiveLoan = (c.totalBakiDebet||0) > 0;
-  const candidates = [];
-  if(hasActiveLoan){
-    if(!ev.merchant){
-      candidates.push({pipeline:'Nasabah Merchant', metric:'rata-rata CASA (ratas 6 bulan)', current:ev.avgCasa||0, min:T.merchant.casaMin, unit:'money'});
-      candidates.push({pipeline:'Nasabah Merchant', metric:'frekuensi transaksi (6 bulan)', current:ev.avgFreq||0, min:T.merchant.freqMin, unit:'freq'});
-    }
-  } else {
-    if(!ev.casaOptimal){
-      candidates.push({pipeline:'CASA Optimal', metric:'rata-rata CASA (ratas 12 bulan)', current:ev.avgCasa12||0, min:T.casaOptimal.casaMin, unit:'money'});
-      candidates.push({pipeline:'CASA Optimal', metric:'frekuensi transaksi (12 bulan)', current:ev.avgFreq12||0, min:T.casaOptimal.freqMin, unit:'freq'});
-    }
-    if(!ev.transaksiOptimal){
-      candidates.push({pipeline:'Transaksi Optimal', metric:'rata-rata transaksi kredit per bulan (6 bulan)', current:ev.avgCreditMonthly||0, min:T.transaksiOptimal.creditMin, unit:'money'});
-      candidates.push({pipeline:'Transaksi Optimal', metric:'rata-rata CASA (ratas 6 bulan)', current:ev.avgCasa||0, min:T.transaksiOptimal.casaMin, unit:'money'});
-    }
-  }
-  let best = null;
-  candidates.forEach(cd => {
-    if(cd.min <= 0) return;
-    const ratio = cd.current/cd.min;
-    if(ratio >= 0.5 && ratio < 1 && (!best || ratio > best.ratio)) best = {...cd, ratio};
-  });
-  if(!best) return null;
-  const fmtVal = v => best.unit==='freq' ? `${fmtDec(v)}x/bulan` : fmtRupiah(Math.round(v));
-  const gap = Math.max(0, best.min - best.current);
-  const actionText = best.unit==='freq'
-    ? 'dorong frekuensi transaksi rekening (migrasi mutasi debit/kredit rutin, payroll, pembayaran vendor, dsb, ke rekening BRI)'
-    : 'dorong top up CASA (Tabungan/Giro), misalnya mengarahkan penempatan dana idle atau hasil penjualan ke rekening BRI';
-  const targetText = hasActiveLoan ? 'kandidat Merchant baru' : 'kandidat CASA Optimal/Trx Optimal baru';
-  return `<div class="rec-note"><strong>Pipeline ${escapeHtml(best.pipeline)}, hampir tercapai (${Math.round(best.ratio*100)}%):</strong> ${escapeHtml(best.metric)} saat ini ${fmtVal(best.current)}, kurang ${fmtVal(gap)} dari ambang ${fmtVal(best.min)}. ${actionText} agar jadi ${targetText}.</div>`;
-}
-function renderOpportunityRecommendations(c){
-  const kol = c.worstKol;
-  const notes = [];
-  if(kol >= 3){
-    const kolLabel = KOL_LABEL[kol] || 'bermasalah';
-    notes.push(`<div class="rec-note" style="border-left-color:var(--danger);background:#fdeceb;color:#8a2f2f"><strong>Recovery (Kol ${kol} - ${escapeHtml(kolLabel)}):</strong> Fokus penanganan kredit bermasalah.</div>`);
-  } else if(kol === 2){
-    notes.push(`<div class="rec-note" style="border-left-color:var(--warning);background:#fdf3dd;color:#7a5a06"><strong>Monitoring (Kol 2):</strong> Pantau komitmen pembayaran sebelum kualitas memburuk.</div>`);
-  } else if(kol === 1 && c.totalBakiDebet > 0 && !c.casaMemenuhi){
-    const threshold = 0.05;
-    const pct = (c.casaToLoan||0) * 100;
-    const targetCasa = c.totalBakiDebet * threshold;
-    const gap = Math.max(0, targetCasa - c.totalCasa);
-    notes.push(`<div class="rec-note"><strong>Joint OTS (Perlu Kunjungan):</strong> CASA to Loan baru ${fmtDec(pct)}% (di bawah ${fmtDec(threshold*100,0)}%), perlu top up CASA (Tabungan/Giro) min. ${fmtRupiah(Math.round(gap))}. Joint visit RM SME–FT.</div>`);
-  }
-  if(kol < 3){
-    c.opportunities.filter(k => k !== 'kolWatch' && k !== 'quality').forEach(k => {
-      notes.push(`<div class="rec-note"><strong>${OPP_DEFS[k].label}:</strong> ${OPP_DEFS[k].rec}</div>`);
-    });
-  }
-  if(!notes.length){
-    const nearMiss = kol < 3 ? buildPipelineNearMissNote(c) : null;
-    if(nearMiss){
-      notes.push(nearMiss);
-    } else if(kol === 1 && (c.totalBakiDebet||0) > 0){
-      const pct = (c.casaToLoan||0) * 100;
-      const ev = c.pipelineEval || {};
-      notes.push(`<div class="rec-note"><strong>Maintain & Monitoring:</strong> CASA to Loan memadai (${fmtDec(pct)}%). Belum ada peluang cross-sell baru terdeteksi, maintain relationship untuk kandidat suplesi ke depannya.</div>`);
-    } else {
-      notes.push('<div class="rec-note">Tidak ada peluang khusus terdeteksi untuk nasabah ini.</div>');
-    }
-  }
-  return notes.join('');
-}
+// NOTE: kotak "Rekomendasi" di profil nasabah (dulu di sini:
+// buildPipelineNearMissNote + renderOpportunityRecommendations) sudah
+// dihapus atas permintaan user — 3 dari 5 kategorinya (CASA Optimal,
+// Transaksi Optimal, Merchant) berbasis Rekening Koran simulasi/dummy tanpa
+// basis data mutasi asli, dan fungsinya sudah digantikan sistem Prioritas
+// Pengelolaan (RTL Tahap 1-7) yang berbasis data asli (CASA/DSRA/NPD/Histori
+// Downgrade). Tab "Peluang" di level dashboard TIDAK ikut dihapus (masih
+// pakai OPP_DEFS/computeOppCategories seperti biasa).
 // Satu tabel rekening koran (bulan-per-bulan + baris Total/Rata-rata di
 // bawahnya). Dipakai baik untuk 1 rekening spesifik maupun untuk tampilan
 // gabungan (nasabah yang datanya riil / tidak punya rekening individual).
@@ -2426,7 +2398,6 @@ function renderCustomerDetail(c){
     ...c.edc.map(m => `<tr><td>EDC</td><td>${escapeHtml(m.namaMerchant)}</td><td>${escapeHtml(m.mid)}</td><td class="num ctr">${fmtNum(m._trx)}</td><td class="num">${fmtRupiah(m._volume)}</td><td class="ctr">${escapeHtml(combinePn(m.pnUser, m.namaUser))}</td></tr>`),
     ...c.qris.map(m => `<tr><td>QRIS</td><td>${escapeHtml(m.namaMerchant)}</td><td>-</td><td class="num ctr">${fmtNum(m._trx)}</td><td class="num">${fmtRupiah(m._volume)}</td><td class="ctr">${escapeHtml(combinePn(m.pn, m.pnNama))}</td></tr>`),
   ].join('') || '<tr><td colspan="6" class="empty">Belum ada merchant EDC/QRIS.</td></tr>';
-  const oppHtml = renderOpportunityRecommendations(c);
   return `
     <div class="detail-content">
       <div class="customer-hero" style="margin-bottom:14px">
@@ -2450,8 +2421,6 @@ function renderCustomerDetail(c){
           </div>
         </div>
       </div>
-      <div class="detail-section-title">Rekomendasi</div>
-      ${oppHtml}
       <div class="detail-section-title">Fasilitas Kredit (${c.loans.length})</div>
       <div class="table-wrap"><table class="data-table"><thead><tr><th>No Rekening</th><th>Jenis</th><th>Kol</th><th class="num">Plafon</th><th class="num">Baki Debet</th><th class="num">Tunggakan</th><th class="ctr">Rate</th><th>Jatuh Tempo</th><th>RM Pengelola Pinjaman</th></tr></thead><tbody>${loansRows}</tbody></table></div>
       <div class="detail-section-title">Tabungan (${c.tabungan.length})</div>
